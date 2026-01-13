@@ -1,0 +1,431 @@
+# Module: Core UCP Protocol
+
+## Purpose
+
+This module defines all UCP protocol types, schemas, and shared utilities. It serves as the foundation for all other modules and ensures protocol compliance.
+
+## File Structure
+
+```
+src/core/
+├── types/
+│   ├── index.ts              # Re-exports all types
+│   ├── ucp-common.ts         # Common UCP types
+│   ├── checkout.ts           # Checkout-related types
+│   ├── payment.ts            # Payment-related types
+│   ├── identity.ts           # Identity linking types
+│   ├── order.ts              # Order management types
+│   └── errors.ts             # Error types
+├── schemas/
+│   ├── index.ts              # Re-exports all schemas
+│   ├── checkout.schema.ts    # Checkout validation schemas
+│   ├── payment.schema.ts     # Payment validation schemas
+│   └── profile.schema.ts     # Business profile schemas
+├── utils/
+│   ├── index.ts              # Re-exports all utilities
+│   ├── crypto.ts             # Cryptographic utilities
+│   ├── validation.ts         # Schema validation helpers
+│   ├── errors.ts             # Error factory functions
+│   └── logger.ts             # Structured logging
+└── constants.ts              # Protocol constants
+```
+
+## Type Definitions
+
+### UCP Common Types
+
+```typescript
+// ucp-common.ts
+
+/**
+ * UCP protocol version metadata
+ */
+interface UCPVersion {
+  version: string;           // "2026-01-11"
+  spec: string;              // URL to specification
+}
+
+/**
+ * Money representation in UCP (minor units)
+ */
+interface Money {
+  amount: number;            // Amount in minor units (cents)
+  currency: string;          // ISO 4217 currency code
+}
+
+/**
+ * Address structure used across UCP
+ */
+interface Address {
+  line1: string;
+  line2?: string;
+  city: string;
+  state?: string;
+  postalCode: string;
+  country: string;           // ISO 3166-1 alpha-2
+}
+
+/**
+ * Buyer information
+ */
+interface Buyer {
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  address?: Address;
+}
+
+/**
+ * Line item in checkout
+ */
+interface LineItem {
+  id: string;
+  item: {
+    id: string;
+    title: string;
+    description?: string;
+    price: number;           // Minor units
+    imageUrl?: string;
+    productUrl?: string;
+  };
+  quantity: number;
+  totalPrice: number;        // quantity * price
+}
+
+/**
+ * Total breakdown types
+ */
+type TotalType = 
+  | 'SUBTOTAL' 
+  | 'SHIPPING' 
+  | 'TAX' 
+  | 'DISCOUNT' 
+  | 'TOTAL';
+
+interface Total {
+  type: TotalType;
+  label: string;
+  amount: number;
+}
+```
+
+### Checkout Types
+
+```typescript
+// checkout.ts
+
+/**
+ * Checkout session status
+ */
+type CheckoutStatus = 
+  | 'incomplete'           // Missing required info
+  | 'ready_for_payment'    // Ready for payment submission
+  | 'ready_for_complete'   // Payment received, ready to complete
+  | 'requires_action'      // Human intervention needed
+  | 'completed'            // Successfully completed
+  | 'expired'              // Session expired
+  | 'cancelled';           // Cancelled by user/merchant
+
+/**
+ * Checkout session object
+ */
+interface CheckoutSession {
+  ucp: UCPVersion;
+  id: string;
+  status: CheckoutStatus;
+  currency: string;
+  buyer?: Buyer;
+  lineItems: LineItem[];
+  totals: Total[];
+  payment?: PaymentInfo;
+  fulfillment?: FulfillmentInfo;
+  messages?: CheckoutMessage[];
+  links?: CheckoutLink[];
+  expiresAt?: string;      // ISO 8601
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Message to display in checkout
+ */
+interface CheckoutMessage {
+  type: 'info' | 'warning' | 'error';
+  code: string;
+  message: string;
+  field?: string;          // Related field path
+}
+
+/**
+ * Action links in checkout
+ */
+interface CheckoutLink {
+  rel: string;             // Relationship type
+  href: string;            // URL
+  method?: string;         // HTTP method
+}
+```
+
+### Payment Types
+
+```typescript
+// payment.ts
+
+/**
+ * Payment handler declaration
+ */
+interface PaymentHandler {
+  id: string;                    // Unique handler instance ID
+  name: string;                  // Handler type (e.g., "com.wix.payments")
+  version: string;               // Handler version
+  spec: string;                  // URL to handler specification
+  configSchema?: string;         // URL to config JSON schema
+  instrumentSchemas?: string[];  // URLs to instrument schemas
+  config: Record<string, any>;   // Handler-specific configuration
+}
+
+/**
+ * Payment instrument (user's payment method)
+ */
+interface PaymentInstrument {
+  id: string;
+  type: 'card' | 'wallet' | 'bank' | 'bnpl';
+  brand?: string;                // VISA, MASTERCARD, etc.
+  lastDigits?: string;           // Last 4 digits
+  expiryMonth?: string;
+  expiryYear?: string;
+  credential: PaymentCredential;
+}
+
+/**
+ * Opaque payment credential
+ */
+interface PaymentCredential {
+  type: 'token' | 'encrypted' | 'mandate';
+  token?: string;
+  encryptedPayload?: string;
+  mandateId?: string;
+}
+
+/**
+ * Payment info in checkout
+ */
+interface PaymentInfo {
+  handlers: PaymentHandler[];
+  selectedHandler?: string;
+  instrument?: PaymentInstrument;
+  status?: 'pending' | 'authorized' | 'captured' | 'failed';
+}
+
+/**
+ * Payment data submitted to complete checkout
+ */
+interface PaymentData {
+  id: string;                    // Instrument ID
+  handlerId: string;             // Selected handler ID
+  credential: PaymentCredential;
+  billingAddress?: Address;
+}
+```
+
+### Error Types
+
+```typescript
+// errors.ts
+
+/**
+ * UCP standard error codes
+ */
+type UCPErrorCode = 
+  | 'INVALID_REQUEST'
+  | 'INVALID_FIELD'
+  | 'MISSING_FIELD'
+  | 'UNAUTHORIZED'
+  | 'FORBIDDEN'
+  | 'NOT_FOUND'
+  | 'CONFLICT'
+  | 'GONE'
+  | 'UNPROCESSABLE'
+  | 'RATE_LIMITED'
+  | 'INTERNAL_ERROR'
+  | 'SERVICE_UNAVAILABLE';
+
+/**
+ * UCP error response
+ */
+interface UCPError {
+  error: {
+    code: UCPErrorCode;
+    message: string;
+    details?: ErrorDetail[];
+    retryable?: boolean;
+    retryAfter?: number;       // Seconds
+  };
+}
+
+/**
+ * Error detail for field-level errors
+ */
+interface ErrorDetail {
+  field: string;
+  code: string;
+  message: string;
+}
+```
+
+## Validation Schemas
+
+Use Zod for runtime validation:
+
+```typescript
+// checkout.schema.ts
+import { z } from 'zod';
+
+export const MoneySchema = z.object({
+  amount: z.number().int().min(0),
+  currency: z.string().length(3).toUpperCase(),
+});
+
+export const AddressSchema = z.object({
+  line1: z.string().min(1).max(200),
+  line2: z.string().max(200).optional(),
+  city: z.string().min(1).max(100),
+  state: z.string().max(100).optional(),
+  postalCode: z.string().min(1).max(20),
+  country: z.string().length(2).toUpperCase(),
+});
+
+export const BuyerSchema = z.object({
+  email: z.string().email(),
+  firstName: z.string().max(100).optional(),
+  lastName: z.string().max(100).optional(),
+  phone: z.string().max(30).optional(),
+  address: AddressSchema.optional(),
+});
+
+export const LineItemSchema = z.object({
+  id: z.string().min(1),
+  item: z.object({
+    id: z.string().min(1),
+    title: z.string().min(1).max(500),
+    description: z.string().max(2000).optional(),
+    price: z.number().int().min(0),
+    imageUrl: z.string().url().optional(),
+    productUrl: z.string().url().optional(),
+  }),
+  quantity: z.number().int().min(1),
+  totalPrice: z.number().int().min(0),
+});
+
+export const CreateCheckoutRequestSchema = z.object({
+  currency: z.string().length(3),
+  buyer: BuyerSchema.optional(),
+  lineItems: z.array(LineItemSchema).min(1),
+  metadata: z.record(z.string()).optional(),
+});
+```
+
+## Utility Functions
+
+### Error Factory
+
+```typescript
+// utils/errors.ts
+
+/**
+ * Create a UCP-compliant error response
+ */
+function createUCPError(
+  code: UCPErrorCode,
+  message: string,
+  details?: ErrorDetail[]
+): UCPError;
+
+/**
+ * Create field validation error
+ */
+function createFieldError(
+  field: string,
+  message: string
+): UCPError;
+
+/**
+ * Map Wix API errors to UCP errors
+ */
+function mapWixErrorToUCP(wixError: WixAPIError): UCPError;
+```
+
+### Cryptographic Utilities
+
+```typescript
+// utils/crypto.ts
+
+/**
+ * Generate checkout-bound token
+ */
+function generateBoundToken(
+  checkoutId: string,
+  businessId: string,
+  ttlSeconds: number
+): string;
+
+/**
+ * Verify token binding
+ */
+function verifyTokenBinding(
+  token: string,
+  checkoutId: string,
+  businessId: string
+): boolean;
+
+/**
+ * Generate idempotency key
+ */
+function generateIdempotencyKey(): string;
+```
+
+## Constants
+
+```typescript
+// constants.ts
+
+export const UCP_VERSION = '2026-01-11';
+export const UCP_SPEC_URL = 'https://ucp.dev/specification/overview';
+
+export const HANDLER_NAME = 'com.wix.payments';
+export const HANDLER_SPEC_URL = 'https://dev.wix.com/ucp/payments/spec';
+
+export const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'ILS', 'CAD', 'AUD'];
+export const SUPPORTED_CARD_NETWORKS = ['VISA', 'MASTERCARD', 'AMEX', 'DISCOVER'];
+
+export const TOKEN_TTL_SECONDS = 900;  // 15 minutes
+export const CHECKOUT_TTL_SECONDS = 3600;  // 1 hour
+
+export const HTTP_STATUS = {
+  OK: 200,
+  CREATED: 201,
+  BAD_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  CONFLICT: 409,
+  UNPROCESSABLE: 422,
+  TOO_MANY_REQUESTS: 429,
+  INTERNAL_ERROR: 500,
+  SERVICE_UNAVAILABLE: 503,
+} as const;
+```
+
+## Module Dependencies
+
+- **External:** `zod`, `uuid`, `crypto` (Node built-in)
+- **Internal:** None (this is the base module)
+
+## Testing Requirements
+
+- Unit tests for all type guards
+- Unit tests for all validation schemas
+- Unit tests for error mapping
+- Unit tests for crypto utilities
+- 100% type coverage

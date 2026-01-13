@@ -1,0 +1,485 @@
+# Module: Checkout Capability
+
+## Purpose
+
+Implement the UCP Checkout capability using Wix eCommerce APIs. This module manages checkout sessions, cart operations, and the checkout lifecycle from creation to completion.
+
+## File Structure
+
+```
+src/modules/checkout/
+├── index.ts                    # Module exports
+├── service.ts                  # Main checkout service
+├── session-manager.ts          # Session lifecycle management
+├── cart-mapper.ts              # Wix Cart to UCP mapping
+├── pricing-engine.ts           # Tax, shipping, discount calculations
+├── fulfillment.ts              # Fulfillment options
+├── state-machine.ts            # Checkout status transitions
+├── types.ts                    # Module-specific types
+└── routes.ts                   # API endpoints
+```
+
+## Capability Declaration
+
+```yaml
+Capability Name: dev.ucp.shopping.checkout
+Version: 2026-01-11
+Spec URL: https://ucp.dev/specification/checkout
+```
+
+## API Endpoints
+
+### POST /checkout-sessions
+
+Create a new checkout session.
+
+**Request:**
+```typescript
+interface CreateCheckoutRequest {
+  currency: string;                    // ISO 4217
+  buyer?: {
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+  };
+  lineItems: Array<{
+    catalogReference: {
+      catalogItemId: string;          // Wix product ID
+      appId: string;                   // "215238eb-22a5-4c36-9e7b-e7c08025e04e"
+      options?: {
+        variantId?: string;
+        customTextFields?: Record<string, string>;
+      };
+    };
+    quantity: number;
+  }>;
+  shippingAddress?: Address;
+  billingAddress?: Address;
+  discountCode?: string;
+  metadata?: Record<string, string>;
+}
+```
+
+**Response:**
+```typescript
+interface CreateCheckoutResponse {
+  ucp: {
+    version: string;
+    services: {
+      'dev.ucp.shopping': {
+        version: string;
+        spec: string;
+      };
+    };
+  };
+  id: string;
+  status: CheckoutStatus;
+  currency: string;
+  buyer?: Buyer;
+  lineItems: LineItem[];
+  totals: Total[];
+  payment: {
+    handlers: PaymentHandler[];
+  };
+  fulfillment?: FulfillmentInfo;
+  messages: CheckoutMessage[];
+  links: CheckoutLink[];
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+### GET /checkout-sessions/{checkoutId}
+
+Retrieve checkout session details.
+
+### PATCH /checkout-sessions/{checkoutId}
+
+Update checkout session (buyer info, shipping, etc.).
+
+**Request:**
+```typescript
+interface UpdateCheckoutRequest {
+  buyer?: Partial<Buyer>;
+  shippingAddress?: Address;
+  billingAddress?: Address;
+  selectedFulfillment?: string;       // Fulfillment option ID
+  discountCode?: string;
+}
+```
+
+### POST /checkout-sessions/{checkoutId}/complete
+
+Complete the checkout with payment.
+
+**Request:**
+```typescript
+interface CompleteCheckoutRequest {
+  paymentData: {
+    id: string;                        // Instrument ID
+    handlerId: string;                 // Selected handler
+    credential: {
+      type: 'token';
+      token: string;
+    };
+    billingAddress?: Address;
+  };
+  idempotencyKey: string;
+}
+```
+
+**Response:**
+```typescript
+interface CompleteCheckoutResponse {
+  id: string;
+  status: 'completed';
+  orderId: string;                     // Created order ID
+  confirmationNumber: string;
+  totals: Total[];
+  payment: {
+    status: 'captured';
+    transactionId: string;
+  };
+}
+```
+
+## Checkout State Machine
+
+```
+                    ┌─────────────┐
+                    │   CREATE    │
+                    └──────┬──────┘
+                           │
+                           ▼
+                    ┌─────────────┐
+          ┌────────│ INCOMPLETE  │────────┐
+          │        └──────┬──────┘        │
+          │               │               │
+          │ missing info  │ all info      │ expired
+          │               │ provided      │
+          │               ▼               │
+          │        ┌─────────────┐        │
+          └───────>│   READY     │        │
+                   │ FOR PAYMENT │        │
+                   └──────┬──────┘        │
+                          │               │
+                          │ payment       │
+                          │ submitted     │
+                          ▼               │
+                   ┌─────────────┐        │
+          ┌───────│   READY     │        │
+          │       │FOR COMPLETE │        │
+          │       └──────┬──────┘        │
+          │              │               │
+          │ 3DS/action   │ complete      │
+          │ required     │ called        │
+          │              ▼               │
+          │       ┌─────────────┐        │
+          │       │  COMPLETED  │        │
+          │       └─────────────┘        │
+          │                              │
+          │       ┌─────────────┐        │
+          └──────>│  REQUIRES   │        │
+                  │   ACTION    │        │
+                  └──────┬──────┘        │
+                         │               │
+                         │               │
+                         ▼               ▼
+                  ┌─────────────┐ ┌─────────────┐
+                  │  CANCELLED  │ │   EXPIRED   │
+                  └─────────────┘ └─────────────┘
+```
+
+## Mapping: Wix eCommerce to UCP
+
+### Cart → LineItems
+
+```typescript
+// cart-mapper.ts
+
+function mapWixCartToUCPLineItems(
+  wixCart: WixCart
+): LineItem[] {
+  return wixCart.lineItems.map(item => ({
+    id: item.id,
+    item: {
+      id: item.catalogReference.catalogItemId,
+      title: item.productName.original,
+      description: item.descriptionLines?.join(' '),
+      price: item.price.amount,
+      imageUrl: item.image?.url,
+      productUrl: item.url?.relativePath,
+    },
+    quantity: item.quantity,
+    totalPrice: item.price.amount * item.quantity,
+  }));
+}
+```
+
+### Wix Checkout → UCP Checkout
+
+```typescript
+function mapWixCheckoutToUCP(
+  wixCheckout: WixCheckout,
+  handlers: PaymentHandler[]
+): CheckoutSession {
+  return {
+    ucp: {
+      version: UCP_VERSION,
+      services: {
+        'dev.ucp.shopping': {
+          version: UCP_VERSION,
+          spec: UCP_SPEC_URL,
+        },
+      },
+    },
+    id: wixCheckout.id,
+    status: mapWixStatusToUCP(wixCheckout),
+    currency: wixCheckout.currency,
+    buyer: mapWixBuyerInfo(wixCheckout.buyerInfo),
+    lineItems: mapWixLineItems(wixCheckout.lineItems),
+    totals: mapWixTotals(wixCheckout.priceSummary),
+    payment: { handlers },
+    fulfillment: mapWixShipping(wixCheckout.shippingInfo),
+    messages: extractMessages(wixCheckout),
+    links: generateLinks(wixCheckout.id),
+    expiresAt: calculateExpiry(),
+    createdAt: wixCheckout.createdDate,
+    updatedAt: wixCheckout.updatedDate,
+  };
+}
+```
+
+## Totals Calculation
+
+```typescript
+// pricing-engine.ts
+
+interface TotalsBreakdown {
+  subtotal: number;
+  shipping: number;
+  tax: number;
+  discount: number;
+  total: number;
+}
+
+function calculateTotals(
+  lineItems: LineItem[],
+  shippingOption?: ShippingOption,
+  taxRate?: number,
+  discount?: DiscountInfo
+): Total[] {
+  const subtotal = lineItems.reduce(
+    (sum, item) => sum + item.totalPrice, 
+    0
+  );
+  
+  const shipping = shippingOption?.price ?? 0;
+  const discountAmount = calculateDiscount(subtotal, discount);
+  const taxableAmount = subtotal - discountAmount + shipping;
+  const tax = Math.round(taxableAmount * (taxRate ?? 0));
+  const total = taxableAmount + tax;
+
+  return [
+    { type: 'SUBTOTAL', label: 'Subtotal', amount: subtotal },
+    { type: 'SHIPPING', label: shippingOption?.title ?? 'Shipping', amount: shipping },
+    { type: 'DISCOUNT', label: discount?.name ?? 'Discount', amount: -discountAmount },
+    { type: 'TAX', label: 'Tax', amount: tax },
+    { type: 'TOTAL', label: 'Total', amount: total },
+  ].filter(t => t.amount !== 0 || t.type === 'TOTAL');
+}
+```
+
+## Fulfillment Options
+
+```typescript
+// fulfillment.ts
+
+interface FulfillmentOption {
+  id: string;
+  type: 'shipping' | 'pickup' | 'digital';
+  title: string;
+  description?: string;
+  price: number;
+  estimatedDelivery?: {
+    minDays: number;
+    maxDays: number;
+  };
+  carrier?: string;
+}
+
+interface FulfillmentInfo {
+  options: FulfillmentOption[];
+  selectedId?: string;
+  address?: Address;
+}
+
+async function getAvailableFulfillment(
+  checkoutId: string,
+  shippingAddress?: Address
+): Promise<FulfillmentOption[]> {
+  // Call Wix Shipping API
+  // Return mapped options
+}
+```
+
+## Session Management
+
+```typescript
+// session-manager.ts
+
+interface SessionConfig {
+  ttlSeconds: number;          // Default 3600 (1 hour)
+  maxRetries: number;          // For payment attempts
+}
+
+class CheckoutSessionManager {
+  /**
+   * Create new checkout session
+   */
+  async create(
+    request: CreateCheckoutRequest
+  ): Promise<CheckoutSession>;
+
+  /**
+   * Get session by ID
+   */
+  async get(checkoutId: string): Promise<CheckoutSession | null>;
+
+  /**
+   * Update session
+   */
+  async update(
+    checkoutId: string,
+    updates: UpdateCheckoutRequest
+  ): Promise<CheckoutSession>;
+
+  /**
+   * Transition session status
+   */
+  async transition(
+    checkoutId: string,
+    event: CheckoutEvent
+  ): Promise<CheckoutSession>;
+
+  /**
+   * Complete checkout with payment
+   */
+  async complete(
+    checkoutId: string,
+    paymentData: PaymentData,
+    idempotencyKey: string
+  ): Promise<CompleteCheckoutResponse>;
+
+  /**
+   * Cancel session
+   */
+  async cancel(checkoutId: string): Promise<void>;
+
+  /**
+   * Clean up expired sessions
+   */
+  async cleanupExpired(): Promise<number>;
+}
+```
+
+## Messages and Validation
+
+```typescript
+// Generate messages based on checkout state
+function generateMessages(checkout: CheckoutSession): CheckoutMessage[] {
+  const messages: CheckoutMessage[] = [];
+
+  if (!checkout.buyer?.email) {
+    messages.push({
+      type: 'warning',
+      code: 'MISSING_EMAIL',
+      message: 'Email address is required to complete checkout',
+      field: 'buyer.email',
+    });
+  }
+
+  if (!checkout.fulfillment?.selectedId && hasPh
+
+ysicalItems(checkout)) {
+    messages.push({
+      type: 'warning',
+      code: 'MISSING_SHIPPING',
+      message: 'Please select a shipping method',
+      field: 'fulfillment.selectedId',
+    });
+  }
+
+  if (checkout.lineItems.some(item => item.quantity === 0)) {
+    messages.push({
+      type: 'error',
+      code: 'INVALID_QUANTITY',
+      message: 'One or more items have invalid quantity',
+    });
+  }
+
+  return messages;
+}
+```
+
+## Links Generation
+
+```typescript
+function generateLinks(checkoutId: string): CheckoutLink[] {
+  return [
+    {
+      rel: 'self',
+      href: `/checkout-sessions/${checkoutId}`,
+      method: 'GET',
+    },
+    {
+      rel: 'update',
+      href: `/checkout-sessions/${checkoutId}`,
+      method: 'PATCH',
+    },
+    {
+      rel: 'complete',
+      href: `/checkout-sessions/${checkoutId}/complete`,
+      method: 'POST',
+    },
+    {
+      rel: 'cancel',
+      href: `/checkout-sessions/${checkoutId}`,
+      method: 'DELETE',
+    },
+    {
+      rel: 'embedded_checkout',
+      href: `https://checkout.wix.com/checkout/${checkoutId}`,
+      method: 'GET',
+    },
+  ];
+}
+```
+
+## Error Scenarios
+
+| Scenario | UCP Error Code | HTTP Status |
+|----------|---------------|-------------|
+| Checkout not found | `NOT_FOUND` | 404 |
+| Checkout expired | `GONE` | 410 |
+| Invalid state transition | `CONFLICT` | 409 |
+| Missing required field | `INVALID_REQUEST` | 400 |
+| Payment failed | `UNPROCESSABLE` | 422 |
+| Out of stock | `CONFLICT` | 409 |
+
+## Testing Requirements
+
+- Unit tests for state machine transitions
+- Unit tests for Wix → UCP mapping
+- Unit tests for totals calculation
+- Integration tests with Wix eCommerce sandbox
+- End-to-end checkout flow tests
+- Expiration handling tests
+- Idempotency tests
+
+## Module Dependencies
+
+- **Internal:** `core-ucp`, `payment-handler`
+- **External:** `@wix/ecom`, `@wix/stores`

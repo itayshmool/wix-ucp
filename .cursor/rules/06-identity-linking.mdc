@@ -1,0 +1,465 @@
+# Module: Identity Linking
+
+## Purpose
+
+Implement UCP Identity Linking capability using OAuth 2.0, enabling AI agents to access member accounts, apply loyalty rewards, and retrieve saved payment methods on behalf of users.
+
+## File Structure
+
+```
+src/modules/identity/
+├── index.ts                    # Module exports
+├── service.ts                  # Identity service
+├── oauth.ts                    # OAuth 2.0 implementation
+├── session.ts                  # Session management
+├── member-mapper.ts            # Wix Member to UCP mapping
+├── types.ts                    # Module-specific types
+└── routes.ts                   # API endpoints
+```
+
+## Capability Declaration
+
+```yaml
+Capability Name: dev.ucp.shopping.identity
+Version: 2026-01-11
+Spec URL: https://ucp.dev/specification/identity
+Auth Protocol: OAuth 2.0
+```
+
+## API Endpoints
+
+### GET /identity/authorize
+
+Initiate OAuth 2.0 authorization flow.
+
+**Query Parameters:**
+```typescript
+interface AuthorizeParams {
+  response_type: 'code';
+  client_id: string;              // Platform's client ID
+  redirect_uri: string;           // Platform's callback URL
+  scope: string;                  // Space-separated scopes
+  state: string;                  // CSRF token
+  code_challenge?: string;        // PKCE challenge
+  code_challenge_method?: 'S256';
+}
+```
+
+**Response:** Redirect to consent page or callback with code.
+
+### POST /identity/token
+
+Exchange authorization code for tokens.
+
+**Request:**
+```typescript
+interface TokenRequest {
+  grant_type: 'authorization_code' | 'refresh_token';
+  code?: string;                  // For authorization_code
+  refresh_token?: string;         // For refresh_token
+  client_id: string;
+  client_secret?: string;
+  redirect_uri?: string;
+  code_verifier?: string;         // PKCE verifier
+}
+```
+
+**Response:**
+```typescript
+interface TokenResponse {
+  access_token: string;
+  token_type: 'Bearer';
+  expires_in: number;             // Seconds
+  refresh_token?: string;
+  scope: string;
+}
+```
+
+### GET /identity/userinfo
+
+Get linked member information.
+
+**Headers:**
+```
+Authorization: Bearer {access_token}
+```
+
+**Response:**
+```typescript
+interface UserInfo {
+  sub: string;                    // Member ID
+  email?: string;
+  email_verified?: boolean;
+  name?: string;
+  given_name?: string;
+  family_name?: string;
+  picture?: string;
+  locale?: string;
+  
+  // UCP-specific claims
+  ucp_member_id: string;
+  ucp_loyalty_tier?: string;
+  ucp_loyalty_points?: number;
+  ucp_saved_addresses?: Address[];
+}
+```
+
+### POST /identity/revoke
+
+Revoke access token.
+
+**Request:**
+```typescript
+interface RevokeRequest {
+  token: string;
+  token_type_hint?: 'access_token' | 'refresh_token';
+}
+```
+
+## OAuth 2.0 Implementation
+
+### Supported Flows
+
+| Flow | Use Case |
+|------|----------|
+| Authorization Code + PKCE | Web and mobile agents |
+| Authorization Code | Server-to-server |
+
+### Scopes
+
+| Scope | Description |
+|-------|-------------|
+| `openid` | OpenID Connect authentication |
+| `profile` | Basic profile information |
+| `email` | Email address |
+| `orders:read` | Read order history |
+| `loyalty:read` | Read loyalty points |
+| `loyalty:write` | Redeem loyalty points |
+| `addresses:read` | Read saved addresses |
+| `payment_methods:read` | Read saved payment methods |
+
+### OAuth Service
+
+```typescript
+// oauth.ts
+
+class OAuthService {
+  /**
+   * Generate authorization URL
+   */
+  generateAuthorizationUrl(params: AuthorizeParams): string;
+
+  /**
+   * Validate authorization request
+   */
+  validateAuthRequest(params: AuthorizeParams): ValidationResult;
+
+  /**
+   * Generate authorization code
+   */
+  async generateAuthCode(
+    clientId: string,
+    memberId: string,
+    scope: string[],
+    codeChallenge?: string
+  ): Promise<string>;
+
+  /**
+   * Exchange code for tokens
+   */
+  async exchangeCode(
+    code: string,
+    clientId: string,
+    redirectUri: string,
+    codeVerifier?: string
+  ): Promise<TokenResponse>;
+
+  /**
+   * Validate access token
+   */
+  async validateToken(token: string): Promise<TokenClaims | null>;
+
+  /**
+   * Refresh tokens
+   */
+  async refreshTokens(refreshToken: string): Promise<TokenResponse>;
+
+  /**
+   * Revoke token
+   */
+  async revokeToken(token: string): Promise<void>;
+}
+```
+
+## Session & Token Management
+
+```typescript
+// session.ts
+
+interface IdentitySession {
+  id: string;
+  memberId?: string;
+  platformId: string;             // Agent/platform identifier
+  scope: string[];
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: Date;
+  createdAt: Date;
+}
+
+class IdentitySessionManager {
+  /**
+   * Create session from OAuth tokens
+   */
+  async createSession(
+    memberId: string,
+    platformId: string,
+    tokens: TokenResponse
+  ): Promise<IdentitySession>;
+
+  /**
+   * Get session by access token
+   */
+  async getSessionByToken(accessToken: string): Promise<IdentitySession | null>;
+
+  /**
+   * Refresh session
+   */
+  async refreshSession(session: IdentitySession): Promise<IdentitySession>;
+
+  /**
+   * Terminate session
+   */
+  async terminateSession(sessionId: string): Promise<void>;
+
+  /**
+   * List active sessions for member
+   */
+  async listMemberSessions(memberId: string): Promise<IdentitySession[]>;
+}
+```
+
+## Member Data Mapping
+
+```typescript
+// member-mapper.ts
+
+interface UCPMemberProfile {
+  id: string;
+  email: string;
+  name?: {
+    first: string;
+    last: string;
+  };
+  phone?: string;
+  addresses: Address[];
+  loyaltyInfo?: {
+    programId: string;
+    tier: string;
+    points: number;
+    lifetimePoints: number;
+  };
+  savedPaymentMethods?: {
+    id: string;
+    type: 'card' | 'wallet';
+    brand?: string;
+    lastDigits?: string;
+    expiryMonth?: string;
+    expiryYear?: string;
+    isDefault: boolean;
+  }[];
+}
+
+/**
+ * Map Wix Member to UCP Member Profile
+ */
+async function mapWixMemberToUCP(
+  wixMember: WixMember,
+  scope: string[]
+): Promise<UCPMemberProfile>;
+
+/**
+ * Get member's loyalty info
+ */
+async function getMemberLoyalty(memberId: string): Promise<LoyaltyInfo | null>;
+
+/**
+ * Get member's saved addresses
+ */
+async function getMemberAddresses(memberId: string): Promise<Address[]>;
+
+/**
+ * Get member's saved payment methods
+ */
+async function getSavedPaymentMethods(
+  memberId: string
+): Promise<SavedPaymentMethod[]>;
+```
+
+## Identity Linking Flow
+
+```
+┌────────────────┐     ┌────────────────┐     ┌────────────────┐
+│    Platform    │     │   Wix UCP      │     │  Wix Members   │
+│    (Agent)     │     │   Identity     │     │     API        │
+└───────┬────────┘     └───────┬────────┘     └───────┬────────┘
+        │                      │                      │
+        │ 1. Redirect to       │                      │
+        │    /identity/authorize                      │
+        │─────────────────────>│                      │
+        │                      │                      │
+        │                      │ 2. Show consent      │
+        │                      │    (if needed)       │
+        │                      │                      │
+        │                      │ 3. Validate member   │
+        │                      │─────────────────────>│
+        │                      │                      │
+        │                      │ 4. Member info       │
+        │                      │<─────────────────────│
+        │                      │                      │
+        │ 5. Redirect with     │                      │
+        │    auth code         │                      │
+        │<─────────────────────│                      │
+        │                      │                      │
+        │ 6. POST /identity/token                     │
+        │    (exchange code)   │                      │
+        │─────────────────────>│                      │
+        │                      │                      │
+        │ 7. Access + refresh  │                      │
+        │    tokens            │                      │
+        │<─────────────────────│                      │
+        │                      │                      │
+        │ 8. GET /identity/userinfo                   │
+        │─────────────────────>│                      │
+        │                      │                      │
+        │                      │ 9. Get member data   │
+        │                      │─────────────────────>│
+        │                      │                      │
+        │ 10. Member profile   │                      │
+        │<─────────────────────│                      │
+        │                      │                      │
+```
+
+## Integration with Checkout
+
+```typescript
+// Apply member benefits to checkout
+async function applyMemberBenefits(
+  checkoutId: string,
+  accessToken: string
+): Promise<CheckoutSession> {
+  // Validate token and get member
+  const session = await identityService.getSessionByToken(accessToken);
+  if (!session?.memberId) {
+    throw createUCPError('UNAUTHORIZED', 'Invalid or expired token');
+  }
+
+  // Get member's loyalty info
+  const loyalty = await getMemberLoyalty(session.memberId);
+  
+  // Get checkout
+  const checkout = await checkoutService.get(checkoutId);
+  
+  // Apply tier discount if applicable
+  if (loyalty?.tier === 'gold') {
+    await checkoutService.applyDiscount(checkoutId, {
+      type: 'loyalty_tier',
+      value: 10, // 10% discount
+    });
+  }
+  
+  // Apply available loyalty points
+  if (loyalty?.points > 0) {
+    // Add as available discount option
+    checkout.extensions = checkout.extensions ?? {};
+    checkout.extensions.loyalty = {
+      availablePoints: loyalty.points,
+      pointsValue: loyalty.points * 0.01, // $0.01 per point
+    };
+  }
+
+  return checkout;
+}
+```
+
+## Consent Management
+
+```typescript
+interface ConsentRecord {
+  memberId: string;
+  platformId: string;
+  scope: string[];
+  grantedAt: Date;
+  expiresAt?: Date;
+}
+
+class ConsentManager {
+  /**
+   * Check if consent exists
+   */
+  async hasConsent(
+    memberId: string,
+    platformId: string,
+    scope: string[]
+  ): Promise<boolean>;
+
+  /**
+   * Record consent
+   */
+  async recordConsent(consent: ConsentRecord): Promise<void>;
+
+  /**
+   * Revoke consent
+   */
+  async revokeConsent(memberId: string, platformId: string): Promise<void>;
+
+  /**
+   * List member's consents
+   */
+  async listConsents(memberId: string): Promise<ConsentRecord[]>;
+}
+```
+
+## Security Requirements
+
+### Token Security
+
+- Access tokens: 15-minute expiry
+- Refresh tokens: 30-day expiry, single-use rotation
+- PKCE required for public clients
+- Tokens bound to platform ID
+
+### Scope Validation
+
+```typescript
+function validateScope(
+  requestedScope: string[],
+  allowedScope: string[]
+): string[] {
+  // Return intersection of requested and allowed
+  return requestedScope.filter(s => allowedScope.includes(s));
+}
+```
+
+### Rate Limiting
+
+| Endpoint | Rate Limit |
+|----------|------------|
+| /identity/authorize | 10/min per IP |
+| /identity/token | 20/min per client |
+| /identity/userinfo | 60/min per token |
+
+## Testing Requirements
+
+- Unit tests for OAuth flows
+- Unit tests for token validation
+- Unit tests for scope filtering
+- Integration tests with Wix Members
+- PKCE verification tests
+- Token refresh tests
+- Consent management tests
+
+## Module Dependencies
+
+- **Internal:** `core-ucp`
+- **External:** `@wix/members`, `jose` (JWT library)

@@ -1,0 +1,524 @@
+# Module: Order Management
+
+## Purpose
+
+Implement UCP Order Management capability for post-purchase support, including order tracking, returns, and webhook notifications for order lifecycle events.
+
+## File Structure
+
+```
+src/modules/orders/
+├── index.ts                    # Module exports
+├── service.ts                  # Order service
+├── tracker.ts                  # Shipment tracking
+├── returns.ts                  # Returns management
+├── webhooks.ts                 # Webhook handling
+├── mappers.ts                  # Wix Order to UCP mapping
+├── types.ts                    # Module-specific types
+└── routes.ts                   # API endpoints
+```
+
+## Capability Declaration
+
+```yaml
+Capability Name: dev.ucp.shopping.orders
+Version: 2026-01-11
+Spec URL: https://ucp.dev/specification/orders
+```
+
+## API Endpoints
+
+### GET /orders/{orderId}
+
+Get order details.
+
+**Response:**
+```typescript
+interface OrderResponse {
+  ucp: UCPVersion;
+  id: string;
+  checkoutId: string;
+  confirmationNumber: string;
+  status: OrderStatus;
+  buyer: Buyer;
+  lineItems: OrderLineItem[];
+  totals: Total[];
+  payment: {
+    status: PaymentStatus;
+    method: string;
+    transactionId: string;
+  };
+  fulfillment: OrderFulfillment;
+  createdAt: string;
+  updatedAt: string;
+  links: OrderLink[];
+}
+
+type OrderStatus = 
+  | 'pending'
+  | 'confirmed'
+  | 'processing'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled'
+  | 'returned';
+
+type PaymentStatus =
+  | 'pending'
+  | 'authorized'
+  | 'captured'
+  | 'partially_refunded'
+  | 'refunded'
+  | 'failed';
+```
+
+### GET /orders
+
+List orders (requires identity linking).
+
+**Query Parameters:**
+```typescript
+interface ListOrdersParams {
+  status?: OrderStatus;
+  limit?: number;                 // Default 20, max 100
+  cursor?: string;                // Pagination cursor
+  createdAfter?: string;          // ISO 8601
+  createdBefore?: string;
+}
+```
+
+**Response:**
+```typescript
+interface ListOrdersResponse {
+  orders: OrderSummary[];
+  pagination: {
+    cursor?: string;
+    hasMore: boolean;
+  };
+}
+
+interface OrderSummary {
+  id: string;
+  confirmationNumber: string;
+  status: OrderStatus;
+  itemCount: number;
+  total: Money;
+  createdAt: string;
+}
+```
+
+### GET /orders/{orderId}/tracking
+
+Get shipment tracking information.
+
+**Response:**
+```typescript
+interface TrackingResponse {
+  orderId: string;
+  shipments: Shipment[];
+}
+
+interface Shipment {
+  id: string;
+  carrier: string;
+  trackingNumber: string;
+  trackingUrl?: string;
+  status: ShipmentStatus;
+  estimatedDelivery?: string;
+  events: TrackingEvent[];
+  items: string[];               // Line item IDs
+}
+
+type ShipmentStatus =
+  | 'label_created'
+  | 'picked_up'
+  | 'in_transit'
+  | 'out_for_delivery'
+  | 'delivered'
+  | 'exception';
+
+interface TrackingEvent {
+  timestamp: string;
+  status: ShipmentStatus;
+  location?: string;
+  description: string;
+}
+```
+
+### POST /orders/{orderId}/return
+
+Initiate a return request.
+
+**Request:**
+```typescript
+interface ReturnRequest {
+  lineItems: Array<{
+    id: string;
+    quantity: number;
+    reason: ReturnReason;
+    notes?: string;
+  }>;
+}
+
+type ReturnReason =
+  | 'defective'
+  | 'not_as_described'
+  | 'wrong_item'
+  | 'no_longer_needed'
+  | 'other';
+```
+
+**Response:**
+```typescript
+interface ReturnResponse {
+  returnId: string;
+  orderId: string;
+  status: ReturnStatus;
+  lineItems: ReturnLineItem[];
+  refundAmount?: Money;
+  returnLabel?: {
+    carrier: string;
+    trackingNumber: string;
+    labelUrl: string;
+  };
+  instructions: string;
+}
+
+type ReturnStatus =
+  | 'requested'
+  | 'approved'
+  | 'rejected'
+  | 'in_transit'
+  | 'received'
+  | 'refunded';
+```
+
+## Order Service
+
+```typescript
+// service.ts
+
+class OrderService {
+  /**
+   * Get order by ID
+   */
+  async getOrder(orderId: string): Promise<Order>;
+
+  /**
+   * Get order by checkout ID
+   */
+  async getOrderByCheckout(checkoutId: string): Promise<Order | null>;
+
+  /**
+   * List orders for member
+   */
+  async listOrders(
+    memberId: string,
+    params: ListOrdersParams
+  ): Promise<ListOrdersResponse>;
+
+  /**
+   * Get tracking info
+   */
+  async getTracking(orderId: string): Promise<TrackingResponse>;
+
+  /**
+   * Initiate return
+   */
+  async initiateReturn(
+    orderId: string,
+    request: ReturnRequest
+  ): Promise<ReturnResponse>;
+
+  /**
+   * Get return status
+   */
+  async getReturnStatus(returnId: string): Promise<ReturnResponse>;
+
+  /**
+   * Cancel order (if eligible)
+   */
+  async cancelOrder(orderId: string): Promise<Order>;
+}
+```
+
+## Wix Order Mapping
+
+```typescript
+// mappers.ts
+
+function mapWixOrderToUCP(wixOrder: WixOrder): OrderResponse {
+  return {
+    ucp: { version: UCP_VERSION },
+    id: wixOrder.id,
+    checkoutId: wixOrder.checkoutId,
+    confirmationNumber: wixOrder.number.toString(),
+    status: mapWixOrderStatus(wixOrder.status),
+    buyer: {
+      email: wixOrder.buyerInfo.email,
+      firstName: wixOrder.buyerInfo.firstName,
+      lastName: wixOrder.buyerInfo.lastName,
+      phone: wixOrder.buyerInfo.phone,
+    },
+    lineItems: wixOrder.lineItems.map(mapWixLineItem),
+    totals: mapWixOrderTotals(wixOrder.priceSummary),
+    payment: {
+      status: mapWixPaymentStatus(wixOrder.paymentStatus),
+      method: wixOrder.paymentMethod,
+      transactionId: wixOrder.transactions?.[0]?.id,
+    },
+    fulfillment: mapWixFulfillment(wixOrder.fulfillmentStatus, wixOrder.shippingInfo),
+    createdAt: wixOrder.dateCreated,
+    updatedAt: wixOrder.dateUpdated,
+    links: generateOrderLinks(wixOrder.id),
+  };
+}
+
+function mapWixOrderStatus(status: WixOrderStatus): OrderStatus {
+  const statusMap: Record<WixOrderStatus, OrderStatus> = {
+    'NOT_FULFILLED': 'processing',
+    'PARTIALLY_FULFILLED': 'processing',
+    'FULFILLED': 'shipped',
+    'CANCELED': 'cancelled',
+  };
+  return statusMap[status] ?? 'pending';
+}
+```
+
+## Webhook Events
+
+### Supported Events
+
+| Event | Description |
+|-------|-------------|
+| `order.created` | New order created |
+| `order.updated` | Order status changed |
+| `order.shipped` | Order shipped |
+| `order.delivered` | Order delivered |
+| `order.cancelled` | Order cancelled |
+| `return.requested` | Return initiated |
+| `return.approved` | Return approved |
+| `return.received` | Return received |
+| `refund.processed` | Refund completed |
+
+### Webhook Payload
+
+```typescript
+interface OrderWebhook {
+  id: string;                     // Webhook event ID
+  type: string;                   // Event type
+  timestamp: string;              // ISO 8601
+  data: {
+    orderId: string;
+    status: OrderStatus;
+    previousStatus?: OrderStatus;
+    // Additional data based on event type
+  };
+  signature: string;              // HMAC signature
+}
+```
+
+### Webhook Handler
+
+```typescript
+// webhooks.ts
+
+class OrderWebhookHandler {
+  /**
+   * Register webhook subscription
+   */
+  async subscribe(
+    url: string,
+    events: string[],
+    secret: string
+  ): Promise<WebhookSubscription>;
+
+  /**
+   * Unsubscribe from webhooks
+   */
+  async unsubscribe(subscriptionId: string): Promise<void>;
+
+  /**
+   * Send webhook notification
+   */
+  async sendWebhook(
+    subscription: WebhookSubscription,
+    event: OrderWebhook
+  ): Promise<void>;
+
+  /**
+   * Verify webhook signature
+   */
+  verifySignature(
+    payload: string,
+    signature: string,
+    secret: string
+  ): boolean;
+
+  /**
+   * Handle Wix order webhook (incoming)
+   */
+  async handleWixOrderWebhook(
+    event: WixOrderEvent
+  ): Promise<void>;
+}
+```
+
+## Tracking Integration
+
+```typescript
+// tracker.ts
+
+interface TrackingProvider {
+  name: string;
+  getTrackingInfo(trackingNumber: string): Promise<TrackingInfo>;
+  getTrackingUrl(trackingNumber: string): string;
+}
+
+class ShipmentTracker {
+  private providers: Map<string, TrackingProvider>;
+
+  /**
+   * Register tracking provider
+   */
+  registerProvider(carrier: string, provider: TrackingProvider): void;
+
+  /**
+   * Get tracking info from Wix
+   */
+  async getTrackingFromWix(orderId: string): Promise<Shipment[]>;
+
+  /**
+   * Fetch real-time tracking
+   */
+  async fetchRealTimeTracking(
+    carrier: string,
+    trackingNumber: string
+  ): Promise<TrackingInfo>;
+
+  /**
+   * Subscribe to tracking updates
+   */
+  async subscribeToUpdates(
+    orderId: string,
+    webhookUrl: string
+  ): Promise<void>;
+}
+```
+
+## Returns Management
+
+```typescript
+// returns.ts
+
+class ReturnsService {
+  /**
+   * Check if order is returnable
+   */
+  async isReturnable(orderId: string): Promise<{
+    returnable: boolean;
+    reason?: string;
+    deadline?: string;
+  }>;
+
+  /**
+   * Create return request
+   */
+  async createReturn(
+    orderId: string,
+    request: ReturnRequest
+  ): Promise<ReturnResponse>;
+
+  /**
+   * Get return label
+   */
+  async getReturnLabel(returnId: string): Promise<ReturnLabel>;
+
+  /**
+   * Update return status
+   */
+  async updateReturnStatus(
+    returnId: string,
+    status: ReturnStatus
+  ): Promise<ReturnResponse>;
+
+  /**
+   * Process refund for return
+   */
+  async processRefund(returnId: string): Promise<RefundResult>;
+}
+
+interface ReturnPolicy {
+  windowDays: number;            // Days from delivery
+  restockingFee?: number;        // Percentage
+  excludedCategories?: string[];
+  requiresLabel: boolean;
+}
+```
+
+## Order State Machine
+
+```
+┌─────────────┐
+│   PENDING   │ (Order created, payment pending)
+└──────┬──────┘
+       │ payment captured
+       ▼
+┌─────────────┐
+│  CONFIRMED  │ (Payment received)
+└──────┬──────┘
+       │ fulfillment started
+       ▼
+┌─────────────┐
+│ PROCESSING  │ (Being prepared)
+└──────┬──────┘
+       │ shipped
+       ▼
+┌─────────────┐
+│   SHIPPED   │ (In transit)
+└──────┬──────┘
+       │ delivered
+       ▼
+┌─────────────┐
+│  DELIVERED  │ (Completed)
+└─────────────┘
+
+Cancellation possible from: PENDING, CONFIRMED, PROCESSING
+Return possible from: DELIVERED (within return window)
+```
+
+## Error Handling
+
+| Scenario | UCP Error Code | HTTP Status |
+|----------|---------------|-------------|
+| Order not found | `NOT_FOUND` | 404 |
+| Order not owned by member | `FORBIDDEN` | 403 |
+| Order cannot be cancelled | `CONFLICT` | 409 |
+| Return window expired | `GONE` | 410 |
+| Item not returnable | `UNPROCESSABLE` | 422 |
+
+## Caching Strategy
+
+```typescript
+// Order data changes infrequently after creation
+const ORDER_CACHE_TTL = {
+  pending: 60,        // 1 minute (status may change)
+  shipped: 300,       // 5 minutes
+  delivered: 3600,    // 1 hour
+  cancelled: 86400,   // 24 hours (won't change)
+};
+```
+
+## Testing Requirements
+
+- Unit tests for status mapping
+- Unit tests for return eligibility
+- Integration tests with Wix Orders API
+- Webhook signature verification tests
+- Tracking integration tests (mock providers)
+- Return flow end-to-end tests
+
+## Module Dependencies
+
+- **Internal:** `core-ucp`, `identity-linking`
+- **External:** `@wix/ecom` (orders), shipping provider SDKs

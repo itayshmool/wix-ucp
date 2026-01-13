@@ -1,0 +1,160 @@
+# Wix UCP Integration - Project Overview
+
+## Project Description
+
+This project implements Google's Universal Commerce Protocol (UCP) for Wix Payments and Wix eCommerce platform, enabling Wix merchants to sell through AI-powered commerce surfaces like Google AI Mode, Gemini, and other UCP-compatible agents.
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         AI SURFACES                                  │
+│            (Google AI Mode, Gemini, Third-party Agents)             │
+└─────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    WIX UCP INTEGRATION LAYER                         │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐   │
+│  │  Discovery  │ │  Checkout   │ │   Payment   │ │    Order    │   │
+│  │   Profile   │ │ Capability  │ │   Handler   │ │ Management  │   │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘   │
+│  ┌─────────────┐ ┌─────────────┐                                    │
+│  │  Identity   │ │ MCP Bridge  │                                    │
+│  │  Linking    │ │             │                                    │
+│  └─────────────┘ └─────────────┘                                    │
+└─────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                       WIX PLATFORM APIs                              │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐   │
+│  │    Wix      │ │     Wix     │ │    Wix      │ │    Wix      │   │
+│  │  Payments   │ │  eCommerce  │ │   Members   │ │    MCP      │   │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+## Technology Stack
+
+- **Runtime:** Node.js 20+ / TypeScript 5.x
+- **Framework:** Express.js or Fastify for REST endpoints
+- **Protocol Support:** REST API, MCP (Model Context Protocol)
+- **Authentication:** OAuth 2.0, API Keys
+- **Validation:** Zod or JSON Schema
+- **Testing:** Jest, Supertest
+
+## Module Responsibilities
+
+| Module | Responsibility |
+|--------|----------------|
+| `core-ucp` | UCP protocol types, schemas, utilities |
+| `payment-handler` | Wix Payments tokenization/processing as UCP handler |
+| `checkout-capability` | UCP Checkout sessions using Wix eCommerce |
+| `discovery-profile` | Business profile and capability advertisement |
+| `mcp-bridge` | Bridge existing Wix MCP to UCP protocol |
+| `identity-linking` | OAuth 2.0 account linking for loyalty/identity |
+| `order-management` | Post-purchase order tracking and management |
+
+## UCP Protocol Version
+
+- **Target Version:** `2026-01-11`
+- **Spec URL:** https://ucp.dev/specification/overview
+- **Conformance Tests:** https://github.com/Universal-Commerce-Protocol/ucp
+
+## Wix API Dependencies
+
+| Wix API | Purpose | Documentation |
+|---------|---------|---------------|
+| Wix Payments | Transaction processing, tokenization | dev.wix.com/docs/api-reference/payments |
+| Wix eCommerce | Cart, Checkout, Orders | dev.wix.com/docs/api-reference/e-commerce |
+| Wix Members | Identity, authentication | dev.wix.com/docs/api-reference/members |
+| Wix MCP | AI agent communication | dev.wix.com/docs/sdk/articles/use-the-wix-mcp |
+
+## Key Design Principles
+
+1. **Stateless Operations** - Each request contains all necessary context
+2. **Idempotency** - All mutating operations must be idempotent
+3. **Security First** - Tokenization, no PAN transmission, credential binding
+4. **Graceful Degradation** - Fallback to embedded checkout when needed
+5. **Extensibility** - Support for custom extensions without core changes
+
+## Error Handling Strategy
+
+All errors must map to UCP standard error codes:
+- `INVALID_REQUEST` - Malformed request
+- `UNAUTHORIZED` - Authentication failure
+- `FORBIDDEN` - Permission denied
+- `NOT_FOUND` - Resource not found
+- `CONFLICT` - State conflict
+- `INTERNAL_ERROR` - Server error
+
+## Environment Configuration
+
+```env
+# Wix API Configuration
+WIX_API_KEY=
+WIX_ACCOUNT_ID=
+WIX_SITE_ID=
+
+# UCP Configuration
+UCP_HANDLER_ID=com.wix.payments
+UCP_VERSION=2026-01-11
+UCP_ENVIRONMENT=sandbox|production
+
+# Server Configuration
+PORT=3000
+NODE_ENV=development|production
+LOG_LEVEL=debug|info|warn|error
+```
+
+## Directory Structure
+
+```
+src/
+├── core/                 # Core UCP protocol
+│   ├── types/           # TypeScript type definitions
+│   ├── schemas/         # JSON schemas and Zod validators
+│   └── utils/           # Shared utilities
+├── modules/
+│   ├── payment-handler/ # Payment handler implementation
+│   ├── checkout/        # Checkout capability
+│   ├── discovery/       # Business profile discovery
+│   ├── mcp-bridge/      # MCP to UCP bridge
+│   ├── identity/        # Identity linking
+│   └── orders/          # Order management
+├── adapters/
+│   └── wix/             # Wix API client adapters
+├── middleware/          # Express/Fastify middleware
+├── routes/              # API route definitions
+└── server.ts            # Application entry point
+
+tests/
+├── unit/                # Unit tests per module
+├── integration/         # Integration tests
+└── conformance/         # UCP conformance tests
+```
+
+## Coding Standards
+
+- Use TypeScript strict mode
+- All functions must have JSDoc comments
+- All public APIs must have OpenAPI documentation
+- Use async/await, no callbacks
+- Handle all promise rejections
+- Log all errors with correlation IDs
+- Use dependency injection for testability
+
+## Git Workflow
+
+- `main` - Production-ready code
+- `develop` - Integration branch
+- `feature/*` - Feature branches
+- `fix/*` - Bug fix branches
+
+Commit messages follow Conventional Commits:
+- `feat:` - New feature
+- `fix:` - Bug fix
+- `docs:` - Documentation
+- `refactor:` - Code refactoring
+- `test:` - Test additions

@@ -1,0 +1,494 @@
+# Module: Discovery Profile
+
+## Purpose
+
+Implement UCP business profile discovery mechanism. This module exposes the `/.well-known/ucp` endpoint that allows AI agents to discover merchant capabilities, supported payment handlers, and available extensions.
+
+## File Structure
+
+```
+src/modules/discovery/
+├── index.ts                    # Module exports
+├── profile-builder.ts          # Build UCP profile
+├── capability-registry.ts      # Register capabilities
+├── handler-registry.ts         # Register payment handlers
+├── extension-registry.ts       # Register extensions
+├── negotiation.ts              # Agent-business negotiation
+├── types.ts                    # Module-specific types
+└── routes.ts                   # API endpoints
+```
+
+## API Endpoints
+
+### GET /.well-known/ucp
+
+Returns the business UCP profile.
+
+**Response:**
+```typescript
+interface UCPProfile {
+  ucp: {
+    version: string;
+    services: {
+      'dev.ucp.shopping': ServiceDefinition;
+    };
+  };
+  business: BusinessInfo;
+  capabilities: Capability[];
+  payment: PaymentConfig;
+  extensions?: Extension[];
+}
+
+interface ServiceDefinition {
+  version: string;
+  spec: string;
+  rest?: {
+    schema: string;
+    endpoint: string;
+  };
+  mcp?: {
+    schema: string;
+    endpoint: string;
+  };
+  a2a?: {
+    endpoint: string;
+  };
+  embedded?: {
+    schema: string;
+  };
+}
+```
+
+### POST /.well-known/ucp/negotiate
+
+Negotiate capabilities with an agent.
+
+**Request:**
+```typescript
+interface NegotiateRequest {
+  agentProfile: {
+    capabilities: string[];       // Capability names agent supports
+    handlers: string[];           // Handler names agent can use
+    extensions: string[];         // Extensions agent understands
+  };
+}
+```
+
+**Response:**
+```typescript
+interface NegotiateResponse {
+  negotiated: {
+    capabilities: Capability[];   // Intersection of supported
+    handlers: PaymentHandler[];   // Compatible handlers
+    extensions: Extension[];      // Shared extensions
+  };
+}
+```
+
+## Profile Structure
+
+### Complete UCP Profile Example
+
+```json
+{
+  "ucp": {
+    "version": "2026-01-11",
+    "services": {
+      "dev.ucp.shopping": {
+        "version": "2026-01-11",
+        "spec": "https://ucp.dev/specification/overview",
+        "rest": {
+          "schema": "https://ucp.dev/services/shopping/rest.openapi.json",
+          "endpoint": "https://merchant.wixsite.com/ucp/v1"
+        },
+        "mcp": {
+          "schema": "https://ucp.dev/services/shopping/mcp.openrpc.json",
+          "endpoint": "https://merchant.wixsite.com/mcp"
+        },
+        "embedded": {
+          "schema": "https://ucp.dev/services/shopping/embedded.openrpc.json"
+        }
+      }
+    }
+  },
+  "business": {
+    "id": "wix_site_abc123",
+    "name": "Awesome Store",
+    "description": "Your one-stop shop for awesome products",
+    "logo": "https://static.wixstatic.com/logo.png",
+    "url": "https://awesome-store.com",
+    "contact": {
+      "email": "support@awesome-store.com",
+      "phone": "+1-555-0100"
+    },
+    "address": {
+      "line1": "123 Commerce St",
+      "city": "New York",
+      "state": "NY",
+      "postalCode": "10001",
+      "country": "US"
+    },
+    "timezone": "America/New_York",
+    "currency": "USD",
+    "supportedCurrencies": ["USD", "EUR", "GBP"]
+  },
+  "capabilities": [
+    {
+      "name": "dev.ucp.shopping.checkout",
+      "version": "2026-01-11",
+      "spec": "https://ucp.dev/specification/checkout",
+      "schema": "https://ucp.dev/schemas/shopping/checkout.json"
+    },
+    {
+      "name": "dev.ucp.shopping.identity",
+      "version": "2026-01-11",
+      "spec": "https://ucp.dev/specification/identity",
+      "schema": "https://ucp.dev/schemas/shopping/identity.json"
+    },
+    {
+      "name": "dev.ucp.shopping.orders",
+      "version": "2026-01-11",
+      "spec": "https://ucp.dev/specification/orders",
+      "schema": "https://ucp.dev/schemas/shopping/orders.json"
+    }
+  ],
+  "payment": {
+    "handlers": [
+      {
+        "id": "wix_handler_001",
+        "name": "com.wix.payments",
+        "version": "2026-01-11",
+        "spec": "https://dev.wix.com/ucp/payments/spec",
+        "config_schema": "https://dev.wix.com/ucp/payments/config.json",
+        "instrument_schemas": [
+          "https://dev.wix.com/ucp/payments/instruments/card.json",
+          "https://dev.wix.com/ucp/payments/instruments/googlepay.json"
+        ],
+        "config": {
+          "merchantId": "wix_merchant_abc123",
+          "environment": "production",
+          "supportedCardNetworks": ["VISA", "MASTERCARD", "AMEX"],
+          "supportedPaymentMethods": ["creditCard", "googlePay", "applePay", "payPal"],
+          "supportedCurrencies": ["USD", "EUR", "GBP"],
+          "threeDSEnabled": true,
+          "tokenizationType": "PAYMENT_GATEWAY"
+        }
+      }
+    ]
+  },
+  "extensions": [
+    {
+      "name": "dev.ucp.shopping.fulfillment",
+      "version": "2026-01-11",
+      "spec": "https://ucp.dev/specification/fulfillment",
+      "extends": "dev.ucp.shopping.checkout"
+    },
+    {
+      "name": "dev.ucp.shopping.discounts",
+      "version": "2026-01-11",
+      "spec": "https://ucp.dev/specification/discounts",
+      "extends": "dev.ucp.shopping.checkout"
+    },
+    {
+      "name": "com.wix.loyalty",
+      "version": "2026-01-11",
+      "spec": "https://dev.wix.com/ucp/extensions/loyalty/spec",
+      "extends": "dev.ucp.shopping.checkout"
+    }
+  ]
+}
+```
+
+## Profile Builder
+
+```typescript
+// profile-builder.ts
+
+class UCPProfileBuilder {
+  private profile: Partial<UCPProfile> = {};
+
+  /**
+   * Set UCP version and service definitions
+   */
+  setVersion(version: string): this;
+
+  /**
+   * Set business information
+   */
+  setBusinessInfo(info: BusinessInfo): this;
+
+  /**
+   * Add a capability
+   */
+  addCapability(capability: Capability): this;
+
+  /**
+   * Add a payment handler
+   */
+  addPaymentHandler(handler: PaymentHandler): this;
+
+  /**
+   * Add an extension
+   */
+  addExtension(extension: Extension): this;
+
+  /**
+   * Set transport endpoints
+   */
+  setTransports(transports: {
+    rest?: { endpoint: string };
+    mcp?: { endpoint: string };
+    a2a?: { endpoint: string };
+  }): this;
+
+  /**
+   * Build the complete profile
+   */
+  build(): UCPProfile;
+}
+```
+
+## Capability Registry
+
+```typescript
+// capability-registry.ts
+
+interface CapabilityDefinition {
+  name: string;
+  version: string;
+  spec: string;
+  schema: string;
+  handler: CapabilityHandler;      // Implementation
+  extensions?: string[];           // Supported extensions
+}
+
+class CapabilityRegistry {
+  private capabilities: Map<string, CapabilityDefinition>;
+
+  /**
+   * Register a capability implementation
+   */
+  register(capability: CapabilityDefinition): void;
+
+  /**
+   * Get capability by name
+   */
+  get(name: string): CapabilityDefinition | undefined;
+
+  /**
+   * List all registered capabilities
+   */
+  list(): CapabilityDefinition[];
+
+  /**
+   * Check if capability is supported
+   */
+  supports(name: string): boolean;
+
+  /**
+   * Get capability handler
+   */
+  getHandler(name: string): CapabilityHandler | undefined;
+}
+```
+
+## Handler Registry
+
+```typescript
+// handler-registry.ts
+
+class PaymentHandlerRegistry {
+  private handlers: Map<string, PaymentHandler>;
+
+  /**
+   * Register a payment handler
+   */
+  register(handler: PaymentHandler): void;
+
+  /**
+   * Get handler by name
+   */
+  get(name: string): PaymentHandler | undefined;
+
+  /**
+   * List all handlers
+   */
+  list(): PaymentHandler[];
+
+  /**
+   * Filter handlers by criteria
+   */
+  filter(criteria: {
+    supportsCurrency?: string;
+    supportsMethod?: string;
+    supportsNetwork?: string;
+  }): PaymentHandler[];
+
+  /**
+   * Get handler configuration for checkout
+   */
+  getConfigForCheckout(
+    checkoutId: string,
+    currency: string,
+    amount: number
+  ): PaymentHandler[];
+}
+```
+
+## Negotiation Logic
+
+```typescript
+// negotiation.ts
+
+interface NegotiationResult {
+  capabilities: Capability[];
+  handlers: PaymentHandler[];
+  extensions: Extension[];
+  warnings?: string[];
+}
+
+/**
+ * Negotiate capabilities between agent and business
+ */
+function negotiate(
+  businessProfile: UCPProfile,
+  agentProfile: AgentProfile
+): NegotiationResult {
+  // Find intersection of capabilities
+  const capabilities = businessProfile.capabilities.filter(
+    cap => agentProfile.capabilities.includes(cap.name)
+  );
+
+  // Find compatible handlers
+  const handlers = businessProfile.payment.handlers.filter(
+    handler => agentProfile.handlers.includes(handler.name)
+  );
+
+  // Find shared extensions
+  const extensions = (businessProfile.extensions ?? []).filter(
+    ext => agentProfile.extensions.includes(ext.name)
+  );
+
+  const warnings: string[] = [];
+  
+  if (capabilities.length === 0) {
+    warnings.push('No common capabilities found');
+  }
+  
+  if (handlers.length === 0) {
+    warnings.push('No compatible payment handlers found');
+  }
+
+  return { capabilities, handlers, extensions, warnings };
+}
+```
+
+## Dynamic Profile Generation
+
+Profile can vary based on:
+
+1. **Cart Context** - Different handlers for different products
+2. **Buyer Location** - Regional payment methods
+3. **Currency** - Handler availability by currency
+4. **Transaction Amount** - BNPL availability
+
+```typescript
+interface ProfileContext {
+  cartAmount?: number;
+  currency?: string;
+  buyerCountry?: string;
+  productCategories?: string[];
+}
+
+async function generateDynamicProfile(
+  baseProfile: UCPProfile,
+  context: ProfileContext
+): Promise<UCPProfile> {
+  const profile = { ...baseProfile };
+
+  // Filter handlers based on context
+  profile.payment.handlers = profile.payment.handlers.filter(handler => {
+    // Check currency support
+    if (context.currency && 
+        !handler.config.supportedCurrencies.includes(context.currency)) {
+      return false;
+    }
+
+    // Check amount limits for BNPL
+    if (handler.name.includes('bnpl') && 
+        context.cartAmount && 
+        context.cartAmount < 50) {
+      return false;
+    }
+
+    return true;
+  });
+
+  return profile;
+}
+```
+
+## Caching Strategy
+
+```typescript
+interface ProfileCache {
+  /**
+   * Get cached profile
+   */
+  get(siteId: string): UCPProfile | null;
+
+  /**
+   * Set profile in cache
+   */
+  set(siteId: string, profile: UCPProfile, ttl: number): void;
+
+  /**
+   * Invalidate cache
+   */
+  invalidate(siteId: string): void;
+}
+
+// Cache TTL: 5 minutes for static profile
+// Dynamic profiles should not be cached or have short TTL
+const PROFILE_CACHE_TTL = 300;
+```
+
+## Integration with Wix
+
+### Fetching Business Info
+
+```typescript
+async function fetchBusinessInfo(siteId: string): Promise<BusinessInfo> {
+  // Call Wix Site Properties API
+  const siteProperties = await wixSiteProperties.get(siteId);
+  
+  return {
+    id: siteId,
+    name: siteProperties.businessName,
+    description: siteProperties.description,
+    logo: siteProperties.logo?.url,
+    url: siteProperties.siteUrl,
+    contact: {
+      email: siteProperties.email,
+      phone: siteProperties.phone,
+    },
+    address: siteProperties.address,
+    timezone: siteProperties.timezone,
+    currency: siteProperties.currency,
+  };
+}
+```
+
+## Testing Requirements
+
+- Unit tests for profile building
+- Unit tests for negotiation logic
+- Unit tests for dynamic filtering
+- Integration tests with Wix Site Properties
+- Schema validation tests
+- Cache invalidation tests
+
+## Module Dependencies
+
+- **Internal:** `core-ucp`
+- **External:** `@wix/site-properties`

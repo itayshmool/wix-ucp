@@ -1,0 +1,339 @@
+# Module: Payment Handler (com.wix.payments)
+
+## Purpose
+
+Implement Wix Payments as a UCP Payment Handler Provider. This module handles tokenization, detokenization, and payment processing according to UCP payment handler specifications.
+
+## File Structure
+
+```
+src/modules/payment-handler/
+├── index.ts                    # Module exports
+├── handler.ts                  # Main handler implementation
+├── tokenizer.ts                # Tokenization service
+├── detokenizer.ts              # Detokenization service
+├── processor.ts                # Payment processing
+├── config.ts                   # Handler configuration
+├── types.ts                    # Module-specific types
+└── routes.ts                   # API endpoints
+```
+
+## Handler Specification
+
+### Handler Identity
+
+```yaml
+Handler Name: com.wix.payments
+Version: 2026-01-11
+Spec URL: https://dev.wix.com/ucp/payments/spec
+Type: Payment Gateway Tokenizer
+```
+
+### Supported Capabilities
+
+| Capability | Status |
+|------------|--------|
+| Card Payments | ✅ |
+| Google Pay | ✅ |
+| Apple Pay | ✅ |
+| PayPal | ✅ |
+| 3D Secure 2.0 | ✅ |
+| Recurring Payments | ✅ |
+| Refunds | ✅ |
+| Partial Capture | ✅ |
+
+## Handler Configuration Schema
+
+```typescript
+// config.ts
+
+interface WixPaymentsHandlerConfig {
+  // Required
+  merchantId: string;           // Wix merchant ID
+  environment: 'sandbox' | 'production';
+  
+  // Card Networks
+  supportedCardNetworks: ('VISA' | 'MASTERCARD' | 'AMEX' | 'DISCOVER')[];
+  
+  // Payment Methods
+  supportedPaymentMethods: ('creditCard' | 'googlePay' | 'applePay' | 'payPal')[];
+  
+  // Currencies
+  supportedCurrencies: string[];  // ISO 4217
+  
+  // Features
+  threeDSEnabled: boolean;
+  recurringEnabled: boolean;
+  
+  // Gateway Settings
+  gatewayMerchantId?: string;    // For Google Pay gateway tokenization
+  
+  // Tokenization
+  tokenizationType: 'PAYMENT_GATEWAY' | 'DIRECT';
+}
+```
+
+## API Endpoints
+
+### POST /tokenize
+
+Tokenizes payment credentials for a specific checkout.
+
+**Request:**
+```typescript
+interface TokenizeRequest {
+  sourceCredential: {
+    type: 'card' | 'googlePay' | 'applePay';
+    // For card
+    pan?: string;
+    expiryMonth?: string;
+    expiryYear?: string;
+    cvv?: string;
+    // For Google Pay
+    googlePayToken?: string;
+    // For Apple Pay
+    applePayToken?: string;
+  };
+  binding: {
+    checkoutId: string;
+    businessIdentity: {
+      type: 'wix_merchant_id';
+      value: string;
+    };
+  };
+  metadata?: Record<string, string>;
+}
+```
+
+**Response:**
+```typescript
+interface TokenizeResponse {
+  token: string;                // Opaque token
+  expiresAt: string;           // ISO 8601
+  instrument: {
+    type: 'card' | 'wallet';
+    brand?: string;
+    lastDigits?: string;
+    expiryMonth?: string;
+    expiryYear?: string;
+  };
+}
+```
+
+### POST /detokenize
+
+Retrieves original payment credentials (for authorized businesses only).
+
+**Request:**
+```typescript
+interface DetokenizeRequest {
+  token: string;
+  binding: {
+    checkoutId: string;
+    businessIdentity: {
+      type: 'wix_merchant_id';
+      value: string;
+    };
+  };
+  // For PSP delegation
+  delegatedTo?: {
+    type: 'psp';
+    identity: string;
+  };
+}
+```
+
+**Response:**
+```typescript
+interface DetokenizeResponse {
+  credential: {
+    type: 'network_token' | 'pan';
+    // Network token (preferred)
+    networkToken?: string;
+    cryptogram?: string;
+    eci?: string;
+    // Raw PAN (only for DIRECT tokenization)
+    pan?: string;
+    expiryMonth?: string;
+    expiryYear?: string;
+  };
+  // Token is invalidated after single use
+  invalidated: boolean;
+}
+```
+
+## Tokenization Flow
+
+```
+┌────────────────┐     ┌────────────────┐     ┌────────────────┐
+│    Platform    │     │  Wix Payments  │     │   Card Network │
+│    (Agent)     │     │   Tokenizer    │     │   (Visa/MC)    │
+└───────┬────────┘     └───────┬────────┘     └───────┬────────┘
+        │                      │                      │
+        │ 1. POST /tokenize    │                      │
+        │ (card details +      │                      │
+        │  binding)            │                      │
+        │─────────────────────>│                      │
+        │                      │                      │
+        │                      │ 2. Request network   │
+        │                      │    token             │
+        │                      │─────────────────────>│
+        │                      │                      │
+        │                      │ 3. Network token +   │
+        │                      │    cryptogram        │
+        │                      │<─────────────────────│
+        │                      │                      │
+        │                      │ 4. Store with binding│
+        │                      │    (checkout_id +    │
+        │                      │    business_id)      │
+        │                      │                      │
+        │ 5. Return opaque     │                      │
+        │    token + instrument│                      │
+        │<─────────────────────│                      │
+        │                      │                      │
+```
+
+## Integration with Wix Payments API
+
+### Mapping to Wix Endpoints
+
+| UCP Operation | Wix Payments API |
+|---------------|------------------|
+| Tokenize card | `POST /payments/v3/card-tokens` |
+| Process payment | `POST /payments/v3/transactions` |
+| Capture | `POST /payments/v3/transactions/{id}/capture` |
+| Void | `POST /payments/v3/transactions/{id}/void` |
+| Refund | `POST /payments/v3/transactions/{id}/refund` |
+
+### Token Storage
+
+```typescript
+interface StoredToken {
+  id: string;                    // Internal token ID
+  wixCardToken: string;          // Wix Payments card token
+  binding: {
+    checkoutId: string;
+    businessId: string;
+  };
+  instrument: {
+    type: string;
+    brand: string;
+    lastDigits: string;
+    expiryMonth: string;
+    expiryYear: string;
+  };
+  createdAt: Date;
+  expiresAt: Date;
+  used: boolean;                 // Single-use tracking
+}
+```
+
+## Security Requirements
+
+### Token Binding
+
+All tokens MUST be bound to:
+1. **Checkout ID** - Token only valid for specific checkout
+2. **Business ID** - Token only usable by specific merchant
+
+### Token Lifecycle
+
+```
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  Generation  │───>│   Storage    │───>│  Detokenize  │───>│ Invalidation │
+│              │    │              │    │              │    │              │
+│  Platform    │    │  15 min TTL  │    │  Business/   │    │  Single-use  │
+│  calls       │    │  Bound to    │    │  PSP calls   │    │  or expired  │
+│  /tokenize   │    │  checkout    │    │  /detokenize │    │              │
+└──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
+```
+
+### Credential Flow Rules
+
+1. **Unidirectional** - Credentials flow Platform → Business only
+2. **Opaque** - Platforms handle tokens, never raw PANs
+3. **No Echo** - Business MUST NOT return credentials in responses
+4. **Single Use** - Tokens invalidated after detokenization
+
+## Handler Declaration
+
+Merchants advertise the handler in their UCP profile:
+
+```json
+{
+  "payment": {
+    "handlers": [
+      {
+        "id": "wix_pay_handler_001",
+        "name": "com.wix.payments",
+        "version": "2026-01-11",
+        "spec": "https://dev.wix.com/ucp/payments/spec",
+        "config_schema": "https://dev.wix.com/ucp/payments/config.json",
+        "instrument_schemas": [
+          "https://dev.wix.com/ucp/payments/instruments/card.json"
+        ],
+        "config": {
+          "merchantId": "wix_merchant_abc123",
+          "environment": "production",
+          "supportedCardNetworks": ["VISA", "MASTERCARD", "AMEX"],
+          "supportedPaymentMethods": ["creditCard", "googlePay", "applePay"],
+          "supportedCurrencies": ["USD", "EUR"],
+          "threeDSEnabled": true,
+          "tokenizationType": "PAYMENT_GATEWAY",
+          "gatewayMerchantId": "BCR2DN4T..."
+        }
+      }
+    ]
+  }
+}
+```
+
+## Error Handling
+
+### Handler-Specific Errors
+
+| Error Code | Description |
+|------------|-------------|
+| `CARD_DECLINED` | Card was declined |
+| `INSUFFICIENT_FUNDS` | Insufficient funds |
+| `EXPIRED_CARD` | Card has expired |
+| `INVALID_CVV` | CVV verification failed |
+| `3DS_REQUIRED` | 3D Secure authentication required |
+| `3DS_FAILED` | 3D Secure authentication failed |
+| `NETWORK_ERROR` | Card network unavailable |
+| `TOKEN_EXPIRED` | Payment token has expired |
+| `TOKEN_INVALID` | Payment token is invalid |
+| `BINDING_MISMATCH` | Token binding does not match |
+
+### Error Response Format
+
+```typescript
+interface PaymentHandlerError {
+  error: {
+    code: string;
+    message: string;
+    declineCode?: string;        // Network-specific code
+    retryable: boolean;
+    requiresAction?: {
+      type: '3ds_authentication';
+      redirectUrl: string;
+    };
+  };
+}
+```
+
+## Testing Requirements
+
+- Unit tests for tokenization logic
+- Unit tests for binding verification
+- Unit tests for token expiration
+- Integration tests with Wix Payments sandbox
+- Mock card number testing (4111... etc.)
+- 3D Secure flow testing
+- Error mapping tests
+
+## Module Dependencies
+
+- **Internal:** `core-ucp`
+- **External:** `wix-payments-sdk` or REST client
+- **Storage:** Redis or in-memory cache for token storage

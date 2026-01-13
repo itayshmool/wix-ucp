@@ -1,0 +1,552 @@
+# Module: MCP Bridge
+
+## Purpose
+
+Bridge the existing Wix MCP Server to UCP protocol, enabling AI agents to interact with Wix merchants through the Model Context Protocol transport while leveraging UCP capabilities.
+
+## File Structure
+
+```
+src/modules/mcp-bridge/
+├── index.ts                    # Module exports
+├── server.ts                   # MCP server implementation
+├── tools.ts                    # MCP tool definitions
+├── handlers/
+│   ├── checkout.ts             # Checkout tool handlers
+│   ├── catalog.ts              # Catalog query handlers
+│   ├── orders.ts               # Order management handlers
+│   └── identity.ts             # Identity linking handlers
+├── session.ts                  # Visitor session management
+├── types.ts                    # Module-specific types
+└── routes.ts                   # MCP endpoint
+```
+
+## MCP Endpoint
+
+### SSE Endpoint: /mcp
+
+Server-Sent Events endpoint for MCP communication.
+
+```
+GET /mcp
+Accept: text/event-stream
+```
+
+### HTTP Endpoint: /mcp/call
+
+HTTP-based MCP tool invocation.
+
+```
+POST /mcp/call
+Content-Type: application/json
+```
+
+## MCP Server Implementation
+
+```typescript
+// server.ts
+
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+
+class WixUCPMCPServer {
+  private server: Server;
+  private toolHandlers: Map<string, ToolHandler>;
+
+  constructor(config: MCPServerConfig) {
+    this.server = new Server(
+      {
+        name: 'wix-ucp-mcp',
+        version: '1.0.0',
+      },
+      {
+        capabilities: {
+          tools: {},
+        },
+      }
+    );
+
+    this.registerTools();
+    this.setupHandlers();
+  }
+
+  /**
+   * Register all available tools
+   */
+  private registerTools(): void {
+    this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
+      tools: this.getToolDefinitions(),
+    }));
+  }
+
+  /**
+   * Setup tool call handlers
+   */
+  private setupHandlers(): void {
+    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      const handler = this.toolHandlers.get(request.params.name);
+      if (!handler) {
+        throw new Error(`Unknown tool: ${request.params.name}`);
+      }
+      return handler(request.params.arguments);
+    });
+  }
+
+  /**
+   * Start SSE transport
+   */
+  async startSSE(response: Response): Promise<void>;
+
+  /**
+   * Handle HTTP call
+   */
+  async handleCall(request: MCPCallRequest): Promise<MCPCallResponse>;
+}
+```
+
+## MCP Tool Definitions
+
+### Available Tools
+
+```typescript
+// tools.ts
+
+const UCP_MCP_TOOLS: Tool[] = [
+  // Profile & Discovery
+  {
+    name: 'getBusinessProfile',
+    description: 'Get the UCP business profile including capabilities and payment handlers',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+
+  // Catalog
+  {
+    name: 'searchProducts',
+    description: 'Search products in the catalog',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query' },
+        limit: { type: 'number', description: 'Max results', default: 10 },
+        offset: { type: 'number', description: 'Pagination offset', default: 0 },
+        filters: {
+          type: 'object',
+          properties: {
+            category: { type: 'string' },
+            minPrice: { type: 'number' },
+            maxPrice: { type: 'number' },
+            inStock: { type: 'boolean' },
+          },
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'getProduct',
+    description: 'Get detailed product information',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        productId: { type: 'string', description: 'Product ID' },
+      },
+      required: ['productId'],
+    },
+  },
+
+  // Checkout
+  {
+    name: 'createCheckout',
+    description: 'Create a new checkout session with items',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        lineItems: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              productId: { type: 'string' },
+              variantId: { type: 'string' },
+              quantity: { type: 'number' },
+            },
+            required: ['productId', 'quantity'],
+          },
+        },
+        currency: { type: 'string', default: 'USD' },
+        buyerEmail: { type: 'string' },
+      },
+      required: ['lineItems'],
+    },
+  },
+  {
+    name: 'getCheckout',
+    description: 'Get checkout session details',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        checkoutId: { type: 'string' },
+      },
+      required: ['checkoutId'],
+    },
+  },
+  {
+    name: 'updateCheckout',
+    description: 'Update checkout with buyer info or shipping',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        checkoutId: { type: 'string' },
+        buyerEmail: { type: 'string' },
+        buyerName: { type: 'string' },
+        shippingAddress: {
+          type: 'object',
+          properties: {
+            line1: { type: 'string' },
+            city: { type: 'string' },
+            state: { type: 'string' },
+            postalCode: { type: 'string' },
+            country: { type: 'string' },
+          },
+        },
+        selectedFulfillmentId: { type: 'string' },
+        discountCode: { type: 'string' },
+      },
+      required: ['checkoutId'],
+    },
+  },
+  {
+    name: 'getPaymentHandlers',
+    description: 'Get available payment handlers for checkout',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        checkoutId: { type: 'string' },
+      },
+      required: ['checkoutId'],
+    },
+  },
+  {
+    name: 'completeCheckout',
+    description: 'Complete checkout with payment token',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        checkoutId: { type: 'string' },
+        paymentToken: { type: 'string' },
+        handlerId: { type: 'string' },
+      },
+      required: ['checkoutId', 'paymentToken', 'handlerId'],
+    },
+  },
+
+  // Orders
+  {
+    name: 'getOrder',
+    description: 'Get order details by ID',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        orderId: { type: 'string' },
+      },
+      required: ['orderId'],
+    },
+  },
+  {
+    name: 'listOrders',
+    description: 'List orders for the current visitor',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', default: 10 },
+        status: { type: 'string', enum: ['pending', 'shipped', 'delivered', 'cancelled'] },
+      },
+    },
+  },
+
+  // Identity
+  {
+    name: 'createVisitorSession',
+    description: 'Create a visitor session and get access token',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'linkIdentity',
+    description: 'Link visitor to existing member account',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        email: { type: 'string' },
+      },
+      required: ['email'],
+    },
+  },
+
+  // Embedded Checkout
+  {
+    name: 'getEmbeddedCheckoutUrl',
+    description: 'Get URL for embedded checkout experience',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        checkoutId: { type: 'string' },
+      },
+      required: ['checkoutId'],
+    },
+  },
+];
+```
+
+## Tool Handlers
+
+### Checkout Handler
+
+```typescript
+// handlers/checkout.ts
+
+async function handleCreateCheckout(
+  args: CreateCheckoutArgs,
+  context: MCPContext
+): Promise<ToolResult> {
+  const checkoutService = context.getService('checkout');
+  
+  const checkout = await checkoutService.create({
+    currency: args.currency ?? 'USD',
+    buyer: args.buyerEmail ? { email: args.buyerEmail } : undefined,
+    lineItems: args.lineItems.map(item => ({
+      catalogReference: {
+        catalogItemId: item.productId,
+        appId: WIX_STORES_APP_ID,
+        options: item.variantId ? { variantId: item.variantId } : undefined,
+      },
+      quantity: item.quantity,
+    })),
+  });
+
+  return {
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          checkoutId: checkout.id,
+          status: checkout.status,
+          total: checkout.totals.find(t => t.type === 'TOTAL')?.amount,
+          currency: checkout.currency,
+          itemCount: checkout.lineItems.length,
+          message: `Checkout created. ${getStatusMessage(checkout.status)}`,
+        }, null, 2),
+      },
+    ],
+  };
+}
+```
+
+### Catalog Handler
+
+```typescript
+// handlers/catalog.ts
+
+async function handleSearchProducts(
+  args: SearchProductsArgs,
+  context: MCPContext
+): Promise<ToolResult> {
+  const catalogService = context.getService('catalog');
+  
+  const results = await catalogService.search({
+    query: args.query,
+    limit: args.limit ?? 10,
+    offset: args.offset ?? 0,
+    filters: args.filters,
+  });
+
+  return {
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          products: results.items.map(p => ({
+            id: p.id,
+            name: p.name,
+            description: p.description?.substring(0, 200),
+            price: formatPrice(p.price, p.currency),
+            imageUrl: p.media?.mainImage?.url,
+            inStock: p.stock?.inStock,
+            variants: p.variants?.length ?? 0,
+          })),
+          total: results.total,
+          hasMore: results.offset + results.items.length < results.total,
+        }, null, 2),
+      },
+    ],
+  };
+}
+```
+
+## Session Management
+
+```typescript
+// session.ts
+
+interface MCPSession {
+  id: string;
+  visitorToken?: string;
+  memberToken?: string;
+  createdAt: Date;
+  expiresAt: Date;
+}
+
+class MCPSessionManager {
+  /**
+   * Create new visitor session
+   */
+  async createVisitorSession(): Promise<MCPSession>;
+
+  /**
+   * Get existing session
+   */
+  async getSession(sessionId: string): Promise<MCPSession | null>;
+
+  /**
+   * Upgrade to member session
+   */
+  async upgradeToMember(
+    sessionId: string,
+    memberCredentials: MemberCredentials
+  ): Promise<MCPSession>;
+
+  /**
+   * Get Wix API token for session
+   */
+  async getWixToken(session: MCPSession): Promise<string>;
+}
+```
+
+## Context Passing
+
+```typescript
+// MCP context passed to all handlers
+interface MCPContext {
+  session: MCPSession;
+  siteId: string;
+  locale?: string;
+  currency?: string;
+  
+  // Service accessors
+  getService<T extends ServiceName>(name: T): ServiceType<T>;
+}
+
+// Service mapping
+type ServiceName = 'checkout' | 'catalog' | 'orders' | 'identity' | 'payments';
+```
+
+## Response Formatting
+
+```typescript
+// Format responses for AI consumption
+function formatCheckoutForAI(checkout: CheckoutSession): string {
+  const total = checkout.totals.find(t => t.type === 'TOTAL');
+  const messages = checkout.messages ?? [];
+  
+  let response = `## Checkout ${checkout.id}\n\n`;
+  response += `**Status:** ${checkout.status}\n`;
+  response += `**Total:** ${formatPrice(total?.amount, checkout.currency)}\n\n`;
+  
+  response += `### Items\n`;
+  checkout.lineItems.forEach(item => {
+    response += `- ${item.item.title} x${item.quantity} - ${formatPrice(item.totalPrice, checkout.currency)}\n`;
+  });
+  
+  if (messages.length > 0) {
+    response += `\n### Required Actions\n`;
+    messages.forEach(msg => {
+      response += `- ${msg.message}\n`;
+    });
+  }
+  
+  response += `\n### Available Actions\n`;
+  if (checkout.status === 'incomplete') {
+    response += `- Update buyer information\n`;
+    response += `- Add shipping address\n`;
+  }
+  if (checkout.status === 'ready_for_payment') {
+    response += `- Complete checkout with payment\n`;
+  }
+  
+  return response;
+}
+```
+
+## Error Handling
+
+```typescript
+// Map UCP errors to MCP tool errors
+function handleToolError(error: UCPError): ToolResult {
+  return {
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          error: true,
+          code: error.error.code,
+          message: error.error.message,
+          retryable: error.error.retryable,
+          suggestion: getSuggestion(error.error.code),
+        }),
+      },
+    ],
+    isError: true,
+  };
+}
+
+function getSuggestion(code: UCPErrorCode): string {
+  const suggestions: Record<UCPErrorCode, string> = {
+    'NOT_FOUND': 'The requested resource does not exist. Please verify the ID.',
+    'INVALID_REQUEST': 'Please check the input parameters.',
+    'UNAUTHORIZED': 'Authentication is required. Create a visitor session first.',
+    // ... other suggestions
+  };
+  return suggestions[code] ?? 'Please try again or contact support.';
+}
+```
+
+## Integration with Existing Wix MCP
+
+```typescript
+// Extend existing Wix MCP with UCP capabilities
+async function extendWixMCP(
+  existingMCP: WixMCPServer,
+  ucpModules: UCPModules
+): Promise<WixUCPMCPServer> {
+  // Add UCP tools to existing Wix MCP tools
+  const ucpTools = generateUCPTools(ucpModules);
+  
+  existingMCP.addTools(ucpTools);
+  
+  // Add UCP-specific handlers
+  ucpTools.forEach(tool => {
+    existingMCP.addHandler(tool.name, createUCPHandler(tool, ucpModules));
+  });
+  
+  return existingMCP as WixUCPMCPServer;
+}
+```
+
+## Testing Requirements
+
+- Unit tests for each tool handler
+- Unit tests for session management
+- Integration tests with MCP client
+- End-to-end flow tests (search → checkout → complete)
+- Error handling tests
+- SSE connection tests
+
+## Module Dependencies
+
+- **Internal:** `core-ucp`, `checkout-capability`, `discovery-profile`
+- **External:** `@modelcontextprotocol/sdk`, `@wix/sdk`
