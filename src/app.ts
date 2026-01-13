@@ -12,6 +12,7 @@ import { discoveryRoutes } from './modules/discovery/index.js';
 import { identityRoutes } from './modules/identity/index.js';
 import { orderRoutes } from './modules/orders/index.js';
 import { mcpRoutes } from './modules/mcp-bridge/index.js';
+import { testUIRoutes } from './test-ui/index.js';
 import { RATE_LIMITS } from './config/index.js';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
@@ -67,11 +68,11 @@ export async function buildApp(): Promise<FastifyInstance> {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", 'data:', 'https:'],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        imgSrc: ["'self'", 'data:', 'https:', 'https://via.placeholder.com'],
         connectSrc: ["'self'"],
-        fontSrc: ["'self'"],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
         objectSrc: ["'none'"],
         mediaSrc: ["'self'"],
         frameSrc: ["'none'"],
@@ -180,6 +181,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // MCP routes
   await app.register(mcpRoutes);
+
+  // Test UI routes (for development and testing)
+  await app.register(testUIRoutes);
 
   // ─────────────────────────────────────────────────────────────
   // Error Handling

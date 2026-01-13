@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wix UCP Test Console</title>
+  <link rel="stylesheet" href="/test-ui/console/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo">
+          <span class="logo-icon">🧪</span>
+          <span class="logo-text">Wix UCP Test Console</span>
+        </div>
+        <span class="version-badge">v2026-01-11</span>
+      </div>
+      <div class="header-right">
+        <div class="session-info">
+          <span class="session-label">Session:</span>
+          <code class="session-id" id="sessionId">Not connected</code>
+        </div>
+        <button class="btn btn-secondary" id="newSessionBtn">New Session</button>
+        <button class="btn btn-ghost" id="clearBtn">Clear</button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Left Panel - Tool Selection & Input -->
+      <div class="panel panel-input">
+        <div class="panel-header">
+          <h2>Execute Tool</h2>
+        </div>
+        
+        <div class="panel-content">
+          <!-- Tool Selector -->
+          <div class="form-group">
+            <label for="toolSelect">Select Tool</label>
+            <select id="toolSelect" class="select">
+              <optgroup label="Discovery">
+                <option value="getBusinessProfile">getBusinessProfile</option>
+              </optgroup>
+              <optgroup label="Products">
+                <option value="searchProducts" selected>searchProducts</option>
+                <option value="getProductDetails">getProductDetails</option>
+              </optgroup>
+              <optgroup label="Cart">
+                <option value="createCart">createCart</option>
+                <option value="getCart">getCart</option>
+                <option value="addToCart">addToCart</option>
+                <option value="updateCartItem">updateCartItem</option>
+                <option value="removeFromCart">removeFromCart</option>
+              </optgroup>
+              <optgroup label="Checkout">
+                <option value="createCheckout">createCheckout</option>
+                <option value="updateCheckout">updateCheckout</option>
+                <option value="getShippingOptions">getShippingOptions</option>
+                <option value="completeCheckout">completeCheckout</option>
+              </optgroup>
+              <optgroup label="Orders">
+                <option value="getOrder">getOrder</option>
+                <option value="listOrders">listOrders</option>
+              </optgroup>
+              <optgroup label="Identity">
+                <option value="linkIdentity">linkIdentity</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <!-- Tool Description -->
+          <div class="tool-description" id="toolDescription">
+            <p>Search for products in the catalog by query, category, or other filters.</p>
+          </div>
+
+          <!-- Arguments Input -->
+          <div class="form-group">
+            <label for="argsInput">
+              Arguments (JSON)
+              <button class="btn-icon" id="formatJsonBtn" title="Format JSON">⎘</button>
+            </label>
+            <textarea id="argsInput" class="textarea code" rows="12" placeholder='{"query": "headphones"}'>{
+  "query": "headphones",
+  "limit": 5
+}</textarea>
+          </div>
+
+          <!-- Execute Button -->
+          <button class="btn btn-primary btn-lg" id="executeBtn">
+            <span class="btn-icon">▶</span>
+            Execute Tool
+          </button>
+
+          <!-- Quick Examples -->
+          <div class="quick-examples">
+            <span class="quick-label">Quick fill:</span>
+            <button class="btn btn-chip" data-example="search">Search Products</button>
+            <button class="btn btn-chip" data-example="cart">Create Cart</button>
+            <button class="btn btn-chip" data-example="checkout">Create Checkout</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Panel - Response -->
+      <div class="panel panel-output">
+        <div class="panel-header">
+          <h2>Response</h2>
+          <div class="panel-actions">
+            <span class="response-time" id="responseTime"></span>
+            <button class="btn btn-ghost btn-sm" id="copyResponseBtn">Copy</button>
+          </div>
+        </div>
+        
+        <div class="panel-content">
+          <div class="response-status" id="responseStatus">
+            <span class="status-icon">○</span>
+            <span class="status-text">Ready to execute</span>
+          </div>
+          
+          <pre class="response-output" id="responseOutput"><code>// Response will appear here after executing a tool
+
+// Try clicking "Execute Tool" to see results!</code></pre>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer - Request History -->
+    <footer class="footer">
+      <div class="history-header">
+        <h3>Request History</h3>
+        <button class="btn btn-ghost btn-sm" id="clearHistoryBtn">Clear History</button>
+      </div>
+      <div class="history-list" id="historyList">
+        <div class="history-empty">No requests yet. Execute a tool to see history.</div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner"></div>
+    <p>Executing tool...</p>
+  </div>
+
+  <script src="/test-ui/console/app.js"></script>
+</body>
+</html>

@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "tsc && cp -r src/test-ui/public dist/test-ui/",
     "start": "node dist/server.js",
     "test": "vitest",
     "test:run": "vitest run",

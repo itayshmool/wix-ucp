@@ -44,14 +44,8 @@ export async function mcpRoutes(fastify: FastifyInstance): Promise<void> {
             sessionId: { type: 'string' },
           },
         },
-        response: {
-          200: {
-            description: 'SSE stream',
-            content: {
-              'text/event-stream': {},
-            },
-          },
-        },
+        // Note: SSE responses don't work with standard JSON schema
+        // The response is a raw text stream
       },
     },
     async (request, reply) => {
