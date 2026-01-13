@@ -1,0 +1,552 @@
+# Testing Strategy & Standards
+
+## The Testing Pyramid
+
+```
+        ╱╲
+       ╱  ╲         E2E Tests (5%)
+      ╱────╲        • Slow, expensive, brittle
+     ╱      ╲       • Critical user journeys only
+    ╱        ╲
+   ╱ Integr.  ╲     Integration Tests (25%)
+  ╱────────────╲    • API endpoints, service interactions
+ ╱              ╲   • Database + Redis + Wix APIs
+╱                ╲
+╱   Unit Tests    ╲  Unit Tests (70%)
+╱──────────────────╲ • Fast, isolated, reliable
+                     • Pure functions, mappers, validators
+```
+
+## Coverage Targets
+
+| Code Type | Target | Reason |
+|-----------|--------|--------|
+| **Overall** | 70% min | Professional baseline |
+| **Payment flows** | 95%+ | Financial risk |
+| **Checkout logic** | 90%+ | Critical path |
+| **Wix API mappers** | 90%+ | Integration boundary |
+| **Validators** | 90%+ | Security critical |
+| **Utilities** | 90%+ | Reusable code |
+| **API routes** | 80%+ | Contract enforcement |
+| **Configuration** | 0% | Static, no logic |
+
+## Test Categories
+
+### 1. Unit Tests (70% of test suite)
+
+**What to test:**
+- Pure functions
+- Data transformation/mappers
+- Validators (Zod schemas)
+- Business logic
+- Utility functions
+- State machine transitions
+
+**Example:**
+```typescript
+describe('mapWixCartToUCPLineItems', () => {
+  it('maps product name to title', () => {
+    const wixCart = createMockWixCart({
+      lineItems: [{
+        productName: { original: 'Cool Product' }
+      }]
+    });
+
+    const result = mapWixCartToUCPLineItems(wixCart);
+
+    expect(result[0].item.title).toBe('Cool Product');
+  });
+
+  it('calculates totalPrice from price * quantity', () => {
+    const wixCart = createMockWixCart({
+      lineItems: [{
+        price: { amount: 1000 },
+        quantity: 3
+      }]
+    });
+
+    const result = mapWixCartToUCPLineItems(wixCart);
+
+    expect(result[0].totalPrice).toBe(3000);
+  });
+
+  it('handles empty cart', () => {
+    const wixCart = createMockWixCart({ lineItems: [] });
+
+    const result = mapWixCartToUCPLineItems(wixCart);
+
+    expect(result).toEqual([]);
+  });
+});
+```
+
+### 2. Integration Tests (25% of test suite)
+
+**What to test:**
+- API endpoints (full request/response cycle)
+- Database operations (Prisma)
+- Redis operations
+- Service interactions
+- Webhook handlers
+
+**Example:**
+```typescript
+describe('POST /checkout-sessions', () => {
+  beforeEach(async () => {
+    await prisma.checkoutSession.deleteMany();
+  });
+
+  it('creates checkout and returns 201', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/checkout-sessions',
+      payload: {
+        currency: 'USD',
+        lineItems: [{
+          catalogReference: { catalogItemId: 'prod-123' },
+          quantity: 1
+        }]
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toHaveProperty('id');
+    expect(response.json().status).toBe('incomplete');
+  });
+
+  it('returns 400 when lineItems is empty', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/checkout-sessions',
+      payload: {
+        currency: 'USD',
+        lineItems: []
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toContain('lineItems');
+  });
+});
+```
+
+### 3. E2E Tests (5% of test suite)
+
+**What to test (ONLY critical paths):**
+- Complete checkout flow (create → update → complete)
+- OAuth flow (authorize → token → userinfo)
+- Webhook delivery and processing
+
+**Example:**
+```typescript
+describe('Complete Checkout Flow', () => {
+  it('completes checkout from creation to order', async () => {
+    // 1. Create checkout
+    const createRes = await api.post('/checkout-sessions', {
+      currency: 'USD',
+      lineItems: [{ catalogReference: { catalogItemId: 'prod-1' }, quantity: 1 }]
+    });
+    const checkoutId = createRes.data.id;
+
+    // 2. Update with buyer info
+    await api.patch(`/checkout-sessions/${checkoutId}`, {
+      buyer: { email: 'test@example.com' }
+    });
+
+    // 3. Get payment handlers
+    const handlersRes = await api.get(`/checkout-sessions/${checkoutId}`);
+    expect(handlersRes.data.status).toBe('ready_for_payment');
+
+    // 4. Complete with payment
+    const completeRes = await api.post(`/checkout-sessions/${checkoutId}/complete`, {
+      paymentData: {
+        handlerId: 'wix_handler_001',
+        credential: { type: 'token', token: 'test-token' }
+      },
+      idempotencyKey: 'idem-123'
+    });
+
+    expect(completeRes.data.status).toBe('completed');
+    expect(completeRes.data.orderId).toBeDefined();
+  });
+});
+```
+
+## Test Organization
+
+### File Structure
+```
+src/
+├── modules/
+│   ├── checkout/
+│   │   ├── service.ts
+│   │   ├── service.test.ts        # Unit tests (co-located)
+│   │   ├── cart-mapper.ts
+│   │   └── cart-mapper.test.ts
+│   └── payment-handler/
+│       ├── tokenizer.ts
+│       └── tokenizer.test.ts
+├── utils/
+│   ├── validation.ts
+│   └── validation.test.ts
+
+tests/
+├── integration/
+│   ├── checkout.test.ts           # API integration tests
+│   ├── payment.test.ts
+│   └── webhooks.test.ts
+├── e2e/
+│   └── checkout-flow.test.ts      # Full flow tests
+└── fixtures/
+    ├── wix-checkout.ts            # Mock Wix data
+    ├── wix-order.ts
+    └── factories.ts               # Test data factories
+```
+
+### Naming Conventions
+- Unit tests: `*.test.ts` (co-located with source)
+- Integration tests: `tests/integration/**/*.test.ts`
+- E2E tests: `tests/e2e/**/*.test.ts`
+
+## Test Best Practices
+
+### ✅ DO
+
+1. **Test behavior, not implementation**
+   ```typescript
+   // GOOD: Test what the function does
+   it('returns incomplete status when buyer email is missing', () => {
+     const checkout = determineCheckoutStatus({ buyer: null });
+     expect(checkout.status).toBe('incomplete');
+   });
+   ```
+
+2. **One assertion per test (ideally)**
+   ```typescript
+   it('maps currency correctly', () => {
+     expect(mapCheckout(wixCheckout).currency).toBe('USD');
+   });
+
+   it('maps buyer email correctly', () => {
+     expect(mapCheckout(wixCheckout).buyer.email).toBe('test@test.com');
+   });
+   ```
+
+3. **Use Arrange-Act-Assert pattern**
+   ```typescript
+   it('calculates total with shipping', () => {
+     // Arrange
+     const lineItems = [{ totalPrice: 1000 }];
+     const shipping = 500;
+
+     // Act
+     const totals = calculateTotals(lineItems, { shipping });
+
+     // Assert
+     expect(totals.total).toBe(1500);
+   });
+   ```
+
+4. **Test edge cases**
+   ```typescript
+   describe('validateToken', () => {
+     it('returns valid for fresh token', () => {});
+     it('returns invalid for expired token', () => {});
+     it('returns invalid for used token', () => {});
+     it('returns invalid for null token', () => {});
+     it('returns invalid for malformed token', () => {});
+   });
+   ```
+
+### ❌ DON'T
+
+1. **Don't test external libraries**
+   ```typescript
+   // BAD: Testing Zod, not your code
+   it('zod validates email', () => {});
+   ```
+
+2. **Don't share state between tests**
+   ```typescript
+   // BAD: Tests depend on each other
+   let checkout;
+   it('creates checkout', () => { checkout = create(); });
+   it('updates checkout', () => { update(checkout); });  // Depends on previous
+
+   // GOOD: Each test is independent
+   it('creates checkout', () => {
+     const checkout = create();
+     expect(checkout).toBeDefined();
+   });
+
+   it('updates checkout', () => {
+     const checkout = create();  // Fresh checkout
+     const updated = update(checkout);
+     expect(updated).toBeDefined();
+   });
+   ```
+
+3. **Don't write flaky tests**
+   ```typescript
+   // BAD: Timing-dependent
+   it('caches result', () => {
+     fetchData();
+     setTimeout(() => expect(cache.has('key')).toBe(true), 100);
+   });
+
+   // GOOD: Wait properly
+   it('caches result', async () => {
+     await fetchData();
+     expect(cache.has('key')).toBe(true);
+   });
+   ```
+
+## Mocking Strategy
+
+### When to Mock
+- Wix APIs (don't call real APIs in tests)
+- Database (use test database or mock)
+- Redis (use mock or test instance)
+- Time-dependent functions
+- External HTTP calls
+
+### How to Mock
+
+**Wix API Client:**
+```typescript
+vi.mock('../adapters/wix/client', () => ({
+  wixClient: {
+    checkout: {
+      createCheckout: vi.fn(),
+      getCheckout: vi.fn(),
+    },
+    orders: {
+      getOrder: vi.fn(),
+    }
+  }
+}));
+
+// In test
+import { wixClient } from '../adapters/wix/client';
+
+it('creates checkout via Wix API', async () => {
+  vi.mocked(wixClient.checkout.createCheckout).mockResolvedValue({
+    id: 'wix-checkout-123'
+  });
+
+  const result = await checkoutService.create(data);
+
+  expect(wixClient.checkout.createCheckout).toHaveBeenCalledWith(
+    expect.objectContaining({ currency: 'USD' })
+  );
+});
+```
+
+**Time:**
+```typescript
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-01-01T12:00:00Z'));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+it('expires token after 15 minutes', () => {
+  const token = createToken();
+  
+  vi.advanceTimersByTime(16 * 60 * 1000);  // 16 minutes
+  
+  expect(isTokenValid(token)).toBe(false);
+});
+```
+
+## Test Data Management
+
+### Use Factories
+```typescript
+// tests/fixtures/factories.ts
+export function createMockWixCheckout(overrides = {}) {
+  return {
+    id: 'checkout-123',
+    currency: 'USD',
+    buyerInfo: {
+      email: 'test@example.com',
+      firstName: 'Test',
+      lastName: 'User'
+    },
+    lineItems: [],
+    priceSummary: {
+      subtotal: { amount: 0 },
+      total: { amount: 0 }
+    },
+    createdDate: new Date().toISOString(),
+    updatedDate: new Date().toISOString(),
+    ...overrides
+  };
+}
+
+export function createMockPaymentToken(overrides = {}) {
+  return {
+    id: 'token-123',
+    wixCardToken: 'wix-card-token',
+    binding: {
+      checkoutId: 'checkout-123',
+      businessId: 'business-456'
+    },
+    instrument: {
+      type: 'card',
+      brand: 'VISA',
+      lastDigits: '4242'
+    },
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    used: false,
+    ...overrides
+  };
+}
+```
+
+### Seed Data for Integration Tests
+```typescript
+beforeEach(async () => {
+  await prisma.checkoutSession.createMany({
+    data: [
+      { id: 'checkout-1', status: 'incomplete', currency: 'USD' },
+      { id: 'checkout-2', status: 'completed', currency: 'EUR' }
+    ]
+  });
+});
+
+afterEach(async () => {
+  await prisma.checkoutSession.deleteMany();
+});
+```
+
+## Running Tests
+
+### NPM Scripts
+```json
+{
+  "scripts": {
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "vitest run tests/e2e"
+  }
+}
+```
+
+### Vitest Configuration
+```typescript
+// vitest.config.ts
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        'tests/',
+        '**/*.test.ts',
+        '**/*.config.ts',
+        'dist/'
+      ],
+      thresholds: {
+        lines: 70,
+        functions: 70,
+        branches: 70,
+        statements: 70
+      }
+    },
+    setupFiles: ['./tests/setup.ts']
+  }
+});
+```
+
+### Test Setup File
+```typescript
+// tests/setup.ts
+import { beforeAll, afterAll, beforeEach } from 'vitest';
+import { prisma } from '../src/lib/prisma';
+import { redis } from '../src/lib/redis';
+
+beforeAll(async () => {
+  // Connect to test database
+  await prisma.$connect();
+});
+
+afterAll(async () => {
+  await prisma.$disconnect();
+  await redis.quit();
+});
+
+beforeEach(async () => {
+  // Clean up between tests
+  await redis.flushdb();
+});
+```
+
+## CI/CD Integration
+
+```yaml
+# .github/workflows/test.yml
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+      
+      - run: npm ci
+      
+      - run: npm run test:run
+        env:
+          DATABASE_URL: postgresql://postgres:test@localhost:5432/test
+          REDIS_URL: redis://localhost:6379
+      
+      - run: npm run test:coverage
+      
+      - uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/coverage-final.json
+```
+
+## Remember
+
+> **"Tests are the specification written in executable code."**
+
+> **"If you can't test it, you can't maintain it."**
+
+---
+
+**Minimum 70% coverage. No exceptions.**

@@ -1,0 +1,497 @@
+# Security Best Practices & Standards
+
+## Core Security Principles
+
+1. **Never Trust User Input** - Validate and sanitize everything
+2. **Least Privilege** - Grant minimum permissions necessary
+3. **Defense in Depth** - Multiple layers of security
+4. **Secure by Default** - Security should be the default, not opt-in
+5. **Fail Securely** - Errors should not leak sensitive information
+
+## Authentication
+
+### Session-Based Authentication (Recommended)
+
+```typescript
+// Generate JWT token
+function generateToken(userId: string): string {
+  return jwt.sign(
+    { userId, type: 'session' },
+    process.env.JWT_SECRET!,
+    { expiresIn: '30d' }
+  );
+}
+
+// Set HTTP-only cookie (Fastify)
+function setAuthCookie(reply: FastifyReply, token: string) {
+  reply.setCookie('session_token', token, {
+    httpOnly: true,       // No JavaScript access (XSS protection)
+    secure: true,         // HTTPS only
+    sameSite: 'strict',   // CSRF protection
+    maxAge: 30 * 24 * 60 * 60 * 1000,  // 30 days
+    path: '/'
+  });
+}
+
+// Authentication hook (Fastify)
+async function authHook(request: FastifyRequest, reply: FastifyReply) {
+  const token = request.cookies.session_token;
+
+  if (!token) {
+    return reply.status(401).send({ error: 'Unauthorized' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!);
+    request.userId = decoded.userId;
+  } catch (error) {
+    return reply.status(401).send({ error: 'Invalid token' });
+  }
+}
+```
+
+### Password Security
+
+```typescript
+import bcrypt from 'bcrypt';
+
+// Hash password
+async function hashPassword(password: string): Promise<string> {
+  const saltRounds = 12;  // Adjust based on security needs
+  return bcrypt.hash(password, saltRounds);
+}
+
+// Verify password
+async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(password, hash);
+}
+```
+
+### Password Requirements
+- Minimum 8 characters
+- At least 1 uppercase letter
+- At least 1 lowercase letter
+- At least 1 number
+- At least 1 special character (recommended)
+- No common passwords (use a password blacklist)
+
+## Input Validation
+
+### Use Zod for Schema Validation
+
+```typescript
+import { z } from 'zod';
+
+const UserSchema = z.object({
+  email: z.string()
+    .email('Invalid email format')
+    .max(100, 'Email too long')
+    .toLowerCase()
+    .trim(),
+
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Must contain uppercase letter')
+    .regex(/[a-z]/, 'Must contain lowercase letter')
+    .regex(/[0-9]/, 'Must contain number'),
+
+  name: z.string()
+    .min(2, 'Name too short')
+    .max(50, 'Name too long')
+    .regex(/^[a-zA-Z\s-]+$/, 'Invalid characters')
+    .trim(),
+
+  age: z.number()
+    .int('Must be integer')
+    .min(13, 'Must be 13 or older')
+    .max(120, 'Invalid age')
+    .optional()
+});
+
+// Validate in Fastify route
+app.post('/api/users', async (request, reply) => {
+  try {
+    const data = UserSchema.parse(request.body);
+    // Process validated data
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return reply.status(400).send({
+        error: 'Validation failed',
+        details: error.errors
+      });
+    }
+    throw error;
+  }
+});
+```
+
+### Sanitize HTML Input
+
+```typescript
+import sanitizeHtml from 'sanitize-html';
+
+function sanitizeUserInput(input: string): string {
+  return sanitizeHtml(input, {
+    allowedTags: [],  // No HTML tags allowed
+    allowedAttributes: {}
+  });
+}
+
+// For rich text (if needed)
+function sanitizeRichText(input: string): string {
+  return sanitizeHtml(input, {
+    allowedTags: ['b', 'i', 'em', 'strong', 'p', 'br'],
+    allowedAttributes: {}
+  });
+}
+```
+
+## Rate Limiting
+
+### API Rate Limiting (Fastify)
+
+```typescript
+import rateLimit from '@fastify/rate-limit';
+
+// General API rate limit
+await app.register(rateLimit, {
+  max: 100,
+  timeWindow: '1 minute',
+  errorResponseBuilder: (request, context) => ({
+    error: 'Rate limit exceeded',
+    retryAfter: context.ttl
+  })
+});
+
+// Per-route stricter limits
+app.post('/tokenize', {
+  config: {
+    rateLimit: {
+      max: 20,
+      timeWindow: '1 minute'
+    }
+  }
+}, tokenizeHandler);
+
+app.post('/identity/token', {
+  config: {
+    rateLimit: {
+      max: 5,
+      timeWindow: '1 hour'
+    }
+  }
+}, tokenHandler);
+```
+
+## SQL Injection Prevention
+
+### Use Prisma (ORM) - Already Safe
+
+```typescript
+// ✅ Prisma handles parameterization automatically
+const user = await prisma.user.findUnique({
+  where: { id: userId }
+});
+
+// ✅ Safe even with dynamic queries
+const users = await prisma.user.findMany({
+  where: {
+    email: { contains: searchTerm }
+  }
+});
+```
+
+### If Using Raw Queries
+
+```typescript
+// ❌ NEVER DO THIS - Vulnerable to SQL injection
+const query = `SELECT * FROM users WHERE id = '${userId}'`;
+
+// ✅ USE PARAMETERIZED QUERIES
+const user = await prisma.$queryRaw`
+  SELECT * FROM users WHERE id = ${userId}
+`;
+```
+
+## XSS Prevention
+
+### Content Security Policy (CSP)
+
+```typescript
+import helmet from '@fastify/helmet';
+
+await app.register(helmet, {
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", process.env.API_URL],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"]
+    }
+  }
+});
+```
+
+## CSRF Protection
+
+### SameSite Cookies (Primary Defense)
+
+```typescript
+reply.setCookie('session_token', token, {
+  sameSite: 'strict',  // or 'lax' for cross-site navigation
+  // ... other options
+});
+```
+
+### CSRF Tokens (Additional Layer)
+
+```typescript
+import { fastifyCsrf } from '@fastify/csrf';
+
+await app.register(fastifyCsrf, {
+  cookieOpts: {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'strict'
+  }
+});
+```
+
+## CORS Configuration
+
+```typescript
+import cors from '@fastify/cors';
+
+await app.register(cors, {
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true,  // Allow cookies
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400  // 24 hours
+});
+```
+
+## Security Headers
+
+### Use Helmet
+
+```typescript
+import helmet from '@fastify/helmet';
+
+await app.register(helmet, {
+  hsts: {
+    maxAge: 31536000,  // 1 year in seconds
+    includeSubDomains: true,
+    preload: true
+  },
+  frameguard: { action: 'deny' },  // Prevent clickjacking
+  xssFilter: true,
+  noSniff: true,  // Prevent MIME type sniffing
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
+});
+```
+
+## Secrets Management
+
+### Environment Variables
+
+```bash
+# .env (NEVER commit to version control)
+JWT_SECRET=your-256-bit-secret-use-crypto-randomBytes-32
+DATABASE_URL=postgresql://...
+REDIS_URL=redis://...
+WIX_API_KEY=your-wix-api-key
+WEBHOOK_SECRET=your-webhook-secret
+
+# Add to .gitignore
+.env
+.env.local
+.env.production
+.env.*.local
+```
+
+### Validate Secrets on Startup
+
+```typescript
+function validateEnvironment() {
+  const required = [
+    'JWT_SECRET',
+    'DATABASE_URL',
+    'REDIS_URL',
+    'WIX_API_KEY'
+  ];
+
+  const missing = required.filter(key => !process.env[key]);
+
+  if (missing.length > 0) {
+    throw new Error(`Missing environment variables: ${missing.join(', ')}`);
+  }
+
+  // Validate secret strength
+  if (process.env.JWT_SECRET!.length < 32) {
+    throw new Error('JWT_SECRET must be at least 32 characters');
+  }
+}
+
+validateEnvironment();
+```
+
+## Error Handling
+
+### Don't Leak Sensitive Information
+
+```typescript
+// ❌ BAD - Leaks implementation details
+app.setErrorHandler((err, request, reply) => {
+  reply.status(500).send({
+    error: err.message,
+    stack: err.stack,  // NEVER send stack traces to client
+  });
+});
+
+// ✅ GOOD - Generic error message
+app.setErrorHandler((err, request, reply) => {
+  // Log full error server-side
+  request.log.error({
+    error: err,
+    userId: request.userId,
+    path: request.url,
+    method: request.method
+  });
+
+  // Send generic message to client
+  reply.status(500).send({
+    error: 'Internal server error',
+    // Only in development
+    ...(process.env.NODE_ENV === 'development' && {
+      message: err.message
+    })
+  });
+});
+```
+
+## Webhook Security
+
+### Verify Webhook Signatures
+
+```typescript
+import crypto from 'crypto';
+
+function verifyWebhookSignature(
+  payload: string,
+  signature: string,
+  secret: string
+): boolean {
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(payload)
+    .digest('hex');
+
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expectedSignature)
+  );
+}
+
+// In webhook handler
+app.post('/webhooks/orders', async (request, reply) => {
+  const signature = request.headers['x-webhook-signature'] as string;
+  const payload = JSON.stringify(request.body);
+
+  if (!verifyWebhookSignature(payload, signature, process.env.WEBHOOK_SECRET!)) {
+    return reply.status(401).send({ error: 'Invalid signature' });
+  }
+
+  // Process webhook...
+});
+```
+
+## Payment Security (UCP Specific)
+
+### Token Binding Verification
+
+```typescript
+function verifyTokenBinding(
+  token: StoredToken,
+  checkoutId: string,
+  businessId: string
+): boolean {
+  return (
+    token.binding.checkoutId === checkoutId &&
+    token.binding.businessId === businessId &&
+    !token.used &&
+    new Date() < token.expiresAt
+  );
+}
+```
+
+### Never Log Sensitive Payment Data
+
+```typescript
+// ❌ NEVER log these
+request.log.info({ cardNumber, cvv, pan });
+
+// ✅ Redact sensitive fields
+const redactedPayment = {
+  ...paymentData,
+  credential: '[REDACTED]',
+  token: token.substring(0, 8) + '...'
+};
+request.log.info({ payment: redactedPayment });
+```
+
+## Security Checklist
+
+- [ ] **Authentication**
+  - [ ] JWT tokens in HTTP-only cookies
+  - [ ] Secure password hashing (bcrypt, saltRounds >= 12)
+  - [ ] Session expiration implemented
+  - [ ] Refresh token rotation
+
+- [ ] **Authorization**
+  - [ ] Role-based access control (RBAC)
+  - [ ] Permission checks on all protected endpoints
+  - [ ] Resource ownership validation
+
+- [ ] **Input Validation**
+  - [ ] All inputs validated (Zod)
+  - [ ] SQL injection prevention (Prisma ORM)
+  - [ ] XSS prevention (sanitization + CSP)
+
+- [ ] **Rate Limiting**
+  - [ ] API rate limiting configured
+  - [ ] Auth endpoints have stricter limits
+  - [ ] Tokenization endpoints rate limited
+
+- [ ] **Security Headers**
+  - [ ] Helmet configured
+  - [ ] HSTS enabled
+  - [ ] CSP configured
+
+- [ ] **HTTPS**
+  - [ ] SSL certificate valid (Render provides)
+  - [ ] Secure flag on cookies
+
+- [ ] **Secrets**
+  - [ ] All secrets in environment variables
+  - [ ] .env in .gitignore
+  - [ ] Secrets validated on startup
+  - [ ] No secrets in logs
+
+- [ ] **Webhooks**
+  - [ ] Signature verification
+  - [ ] Idempotency handling
+
+- [ ] **Payment Security**
+  - [ ] Token binding verification
+  - [ ] Single-use token enforcement
+  - [ ] No PAN logging
+
+---
+
+**Security is not optional. It's foundational.**

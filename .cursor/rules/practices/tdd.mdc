@@ -1,0 +1,357 @@
+# Test-Driven Development (TDD) Rules
+
+## Core Directive
+All business logic MUST use Test-Driven Development. No exceptions.
+
+## The Red-Green-Refactor Cycle
+
+### 1. 🔴 RED: Write a Failing Test
+- Write the smallest possible test that describes the next piece of functionality
+- Confirm the test FAILS (if it passes without implementation, the test is wrong)
+- Test should fail for the RIGHT reason (not syntax errors)
+
+### 2. ✅ GREEN: Write Minimal Implementation
+- Write the MINIMUM code needed to make the test pass
+- Don't think about future requirements
+- Hardcoded values are OK at this stage
+- Goal: Make the test pass as quickly as possible
+
+### 3. 🔄 REFACTOR: Clean Up
+- Improve code quality while keeping tests green
+- Extract duplications
+- Improve naming
+- Optimize structure
+- Tests must still pass after refactoring
+
+## Workflow for Cursor AI
+
+When asked to implement a feature:
+
+1. **Identify atomic logic pieces** required
+2. **Write the test file first** (`*.test.ts`)
+3. **Run the test** and confirm it fails (Red)
+4. **Implement the logic** in the source file
+5. **Run the test** and confirm it passes (Green)
+6. **Refactor** if necessary while keeping tests green
+
+## Mandatory Rules
+
+- ❌ **NEVER** write implementation code without a failing test first
+- ❌ **NEVER** skip the red phase
+- ❌ **NEVER** say "I'll write tests later"
+- ✅ **ALWAYS** write test before implementation
+- ✅ **ALWAYS** confirm test fails before implementing
+- ✅ **ALWAYS** keep tests green during refactoring
+
+## When to Apply TDD
+
+| Code Type | TDD Required? | Reason |
+|-----------|--------------|--------|
+| Business logic | ✅ YES | Critical, complex, error-prone |
+| Utility functions | ✅ YES | Reusable, needs reliability |
+| API endpoints | ✅ YES | Contract validation required |
+| Data transformations | ✅ YES | Edge cases common |
+| Wix API mappers | ✅ YES | Integration boundary |
+| Payment handlers | ✅ YES | Financial risk |
+| Validators | ✅ YES | Security critical |
+| Configuration files | ❌ NO | Static, no logic |
+| Type definitions | ❌ NO | Compile-time only |
+
+## Test Naming Convention
+
+```typescript
+describe('FeatureName or FunctionName', () => {
+  it('should [expected behavior] when [condition]', () => {
+    // Test implementation
+  });
+});
+```
+
+Examples:
+```typescript
+describe('validateCheckout', () => {
+  it('should return valid when all required fields are present', () => {});
+  it('should return invalid when buyer email is missing', () => {});
+  it('should return invalid when line items are empty', () => {});
+});
+
+describe('mapWixOrderToUCP', () => {
+  it('should map order status correctly', () => {});
+  it('should calculate totals from price summary', () => {});
+  it('should handle missing optional fields', () => {});
+});
+```
+
+## Code Coverage Targets
+
+- **Overall**: 70% minimum
+- **Business logic**: 90%+ (critical paths)
+- **Payment/Checkout flows**: 95%+ (financial risk)
+- **Utilities**: 90%+
+- **API routes**: 80%+
+
+## Testing Tools
+
+### Primary Stack (Vitest)
+- **Unit tests**: Vitest
+- **API tests**: Vitest + Supertest
+- **Mocking**: Vitest built-in mocks
+
+### Configuration
+```typescript
+// vitest.config.ts
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      thresholds: {
+        lines: 70,
+        functions: 70,
+        branches: 70,
+        statements: 70
+      }
+    }
+  }
+});
+```
+
+## Example TDD Session
+
+```typescript
+// STEP 1: Write failing test (RED)
+describe('calculateCheckoutTotals', () => {
+  it('should calculate subtotal from line items', () => {
+    const lineItems = [
+      { totalPrice: 1000 },  // $10.00
+      { totalPrice: 2500 },  // $25.00
+    ];
+    
+    const totals = calculateCheckoutTotals(lineItems);
+    
+    expect(totals.subtotal).toBe(3500);
+  });
+});
+
+// Run test: ❌ FAILS (function doesn't exist)
+
+// STEP 2: Minimal implementation (GREEN)
+function calculateCheckoutTotals(lineItems: LineItem[]) {
+  const subtotal = lineItems.reduce((sum, item) => sum + item.totalPrice, 0);
+  return { subtotal };
+}
+
+// Run test: ✅ PASSES
+
+// STEP 3: Add more test cases
+it('should calculate tax at 10%', () => {
+  const lineItems = [{ totalPrice: 1000 }];
+  const totals = calculateCheckoutTotals(lineItems, { taxRate: 0.1 });
+  
+  expect(totals.tax).toBe(100);
+  expect(totals.total).toBe(1100);
+});
+
+// Run test: ❌ FAILS (tax not implemented)
+
+// STEP 4: Update implementation
+function calculateCheckoutTotals(
+  lineItems: LineItem[],
+  options: { taxRate?: number } = {}
+) {
+  const subtotal = lineItems.reduce((sum, item) => sum + item.totalPrice, 0);
+  const tax = Math.round(subtotal * (options.taxRate ?? 0));
+  const total = subtotal + tax;
+  
+  return { subtotal, tax, total };
+}
+
+// Run test: ✅ ALL PASS
+
+// STEP 5: Refactor (if needed)
+interface TotalsOptions {
+  taxRate?: number;
+  shippingCost?: number;
+  discountAmount?: number;
+}
+
+function calculateCheckoutTotals(
+  lineItems: LineItem[],
+  options: TotalsOptions = {}
+): CheckoutTotals {
+  const { taxRate = 0, shippingCost = 0, discountAmount = 0 } = options;
+  
+  const subtotal = lineItems.reduce((sum, item) => sum + item.totalPrice, 0);
+  const taxableAmount = subtotal - discountAmount + shippingCost;
+  const tax = Math.round(taxableAmount * taxRate);
+  const total = taxableAmount + tax;
+  
+  return { subtotal, tax, total, shipping: shippingCost, discount: discountAmount };
+}
+
+// Run test: ✅ ALL STILL PASS
+```
+
+## UCP-Specific TDD Examples
+
+### Testing Wix → UCP Mappers
+
+```typescript
+describe('mapWixCheckoutToUCP', () => {
+  it('should map incomplete checkout status', () => {
+    const wixCheckout = createMockWixCheckout({
+      buyerInfo: null  // Missing buyer
+    });
+    
+    const ucpCheckout = mapWixCheckoutToUCP(wixCheckout);
+    
+    expect(ucpCheckout.status).toBe('incomplete');
+  });
+
+  it('should map line items with correct structure', () => {
+    const wixCheckout = createMockWixCheckout({
+      lineItems: [{
+        id: 'item-1',
+        productName: { original: 'Test Product' },
+        price: { amount: 1999 },
+        quantity: 2
+      }]
+    });
+    
+    const ucpCheckout = mapWixCheckoutToUCP(wixCheckout);
+    
+    expect(ucpCheckout.lineItems[0]).toEqual({
+      id: 'item-1',
+      item: {
+        id: expect.any(String),
+        title: 'Test Product',
+        price: 1999
+      },
+      quantity: 2,
+      totalPrice: 3998
+    });
+  });
+});
+```
+
+### Testing Token Binding
+
+```typescript
+describe('verifyTokenBinding', () => {
+  it('should return true for valid binding', () => {
+    const token = createTestToken({
+      binding: { checkoutId: 'checkout-123', businessId: 'biz-456' },
+      expiresAt: new Date(Date.now() + 60000),
+      used: false
+    });
+    
+    const isValid = verifyTokenBinding(token, 'checkout-123', 'biz-456');
+    
+    expect(isValid).toBe(true);
+  });
+
+  it('should return false for mismatched checkout', () => {
+    const token = createTestToken({
+      binding: { checkoutId: 'checkout-123', businessId: 'biz-456' }
+    });
+    
+    const isValid = verifyTokenBinding(token, 'wrong-checkout', 'biz-456');
+    
+    expect(isValid).toBe(false);
+  });
+
+  it('should return false for expired token', () => {
+    const token = createTestToken({
+      binding: { checkoutId: 'checkout-123', businessId: 'biz-456' },
+      expiresAt: new Date(Date.now() - 1000)  // Expired
+    });
+    
+    const isValid = verifyTokenBinding(token, 'checkout-123', 'biz-456');
+    
+    expect(isValid).toBe(false);
+  });
+
+  it('should return false for already used token', () => {
+    const token = createTestToken({
+      binding: { checkoutId: 'checkout-123', businessId: 'biz-456' },
+      used: true
+    });
+    
+    const isValid = verifyTokenBinding(token, 'checkout-123', 'biz-456');
+    
+    expect(isValid).toBe(false);
+  });
+});
+```
+
+## Common Mistakes to Avoid
+
+### ❌ Writing Tests After Implementation
+```typescript
+// BAD: Implementation first
+function complexPaymentLogic() { /* 100 lines */ }
+
+// Then writing tests
+it('should work', () => { /* trying to figure out what to test */ });
+```
+
+### ✅ Tests First
+```typescript
+// GOOD: Test first
+it('should return captured status after successful payment', () => {
+  const result = processPayment(validPaymentData);
+  expect(result.status).toBe('captured');
+});
+
+// Then minimal implementation
+```
+
+### ❌ Testing Implementation Details
+```typescript
+// BAD: Testing internal implementation
+it('should call private method validateInput', () => {
+  vi.spyOn(service, 'validateInput');  // Testing HOW
+});
+```
+
+### ✅ Testing Behavior
+```typescript
+// GOOD: Testing behavior/output
+it('should throw InvalidCheckoutError when checkout expired', () => {
+  const expiredCheckout = createExpiredCheckout();
+  
+  expect(() => service.complete(expiredCheckout))
+    .toThrow(InvalidCheckoutError);
+});
+```
+
+## Integration with CI/CD
+
+```yaml
+# GitHub Actions
+- name: Run tests
+  run: npm test
+
+- name: Check coverage
+  run: npm run test:coverage
+
+- name: Fail if coverage below threshold
+  run: |
+    COVERAGE=$(cat coverage/coverage-summary.json | jq '.total.lines.pct')
+    if (( $(echo "$COVERAGE < 70" | bc -l) )); then
+      echo "Coverage $COVERAGE% is below 70% threshold"
+      exit 1
+    fi
+```
+
+## Remember
+
+> **"Code without tests is broken by design."** - Jacob Kaplan-Moss
+
+> **"If it's worth building, it's worth testing. If it's not worth testing, why are you wasting your time working on it?"** - Scott Ambler
+
+---
+
+**This is not negotiable. Tests first, always.**
