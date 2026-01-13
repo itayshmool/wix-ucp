@@ -3,16 +3,39 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import cookie from '@fastify/cookie';
-import { logger } from './lib/logger.js';
 import { healthRoutes } from './routes/health.js';
 import { RATE_LIMITS } from './config/index.js';
+
+const isDevelopment = process.env.NODE_ENV === 'development';
 
 /**
  * Build and configure Fastify application
  */
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
-    loggerInstance: logger, // Use loggerInstance for pre-created pino logger
+    logger: {
+      level: process.env.LOG_LEVEL ?? (isDevelopment ? 'debug' : 'info'),
+      ...(isDevelopment && {
+        transport: {
+          target: 'pino-pretty',
+          options: {
+            colorize: true,
+            translateTime: 'HH:MM:ss',
+            ignore: 'pid,hostname',
+          },
+        },
+      }),
+      redact: {
+        paths: [
+          'req.headers.authorization',
+          'req.headers.cookie',
+          'payload.credential',
+          'payload.token',
+          'payload.password',
+        ],
+        censor: '[REDACTED]',
+      },
+    },
     trustProxy: true, // Required for Render (behind proxy)
     requestIdHeader: 'x-request-id',
     requestIdLogLabel: 'requestId',
