@@ -11,6 +11,7 @@ import { checkoutRoutes } from './modules/checkout/index.js';
 import { discoveryRoutes } from './modules/discovery/index.js';
 import { identityRoutes } from './modules/identity/index.js';
 import { orderRoutes } from './modules/orders/index.js';
+import { mcpRoutes } from './modules/mcp-bridge/index.js';
 import { RATE_LIMITS } from './config/index.js';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
@@ -176,6 +177,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // Order routes
   await app.register(orderRoutes, { prefix: '/ucp/v1' });
+
+  // MCP routes
+  await app.register(mcpRoutes);
 
   // ─────────────────────────────────────────────────────────────
   // Error Handling

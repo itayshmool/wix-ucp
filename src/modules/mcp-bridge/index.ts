@@ -1,15 +1,40 @@
 /**
  * MCP Bridge Module
  * 
- * Bridges Wix MCP Server to UCP protocol.
- * Enables AI agents to interact via Model Context Protocol.
- * 
+ * Bridges Wix MCP to UCP protocol.
  * See: .cursor/rules/modules/mcp-bridge.mdc
  */
 
-// Module exports will be added here
-// export * from './server.js';
-// export * from './tools.js';
-// export * from './session.js';
+// Types
+export * from './types.js';
 
-export {};
+// Tools
+export {
+  UCP_MCP_TOOLS,
+  getTool,
+  getToolNames,
+  validateToolArgs,
+} from './tools.js';
+
+// Session Manager
+export {
+  MCPSessionManager,
+  getSessionManager,
+  createSessionManager,
+} from './session.js';
+
+// Server
+export {
+  WixUCPMCPServer,
+  getMCPServer,
+  createMCPServer,
+} from './server.js';
+
+// Handlers
+export { checkoutHandlers } from './handlers/checkout.js';
+export { catalogHandlers } from './handlers/catalog.js';
+export { orderHandlers } from './handlers/orders.js';
+export { identityHandlers } from './handlers/identity.js';
+
+// Routes
+export { mcpRoutes } from './routes.js';
