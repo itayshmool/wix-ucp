@@ -474,6 +474,19 @@ export function testUIRoutes(
     return serveStaticFile(filePath, reply);
   });
 
+  // Serve wizard index.html
+  fastify.get('/test-ui/wizard', async (_request, reply) => {
+    const filePath = path.join(PUBLIC_DIR, 'wizard', 'index.html');
+    return serveStaticFile(filePath, reply);
+  });
+
+  // Serve wizard static files
+  fastify.get('/test-ui/wizard/:filename', async (request, reply) => {
+    const { filename } = request.params as { filename: string };
+    const filePath = path.join(PUBLIC_DIR, 'wizard', filename);
+    return serveStaticFile(filePath, reply);
+  });
+
   // MCP tool call endpoint (for test UI)
   fastify.post<{
     Body: MCPCallRequest;

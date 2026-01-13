@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wix UCP Flow Wizard</title>
+  <link rel="stylesheet" href="/test-ui/wizard/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <a href="/test-ui/console" class="back-link">← Console</a>
+        <div class="logo">
+          <span class="logo-icon">🛒</span>
+          <span class="logo-text">UCP Flow Wizard</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <button class="btn btn-ghost" id="resetBtn">Reset Flow</button>
+      </div>
+    </header>
+
+    <!-- Progress Bar -->
+    <div class="progress-container">
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <div class="steps-indicator">
+        <div class="step-dot active" data-step="1">
+          <span class="step-number">1</span>
+          <span class="step-label">Products</span>
+        </div>
+        <div class="step-dot" data-step="2">
+          <span class="step-number">2</span>
+          <span class="step-label">Cart</span>
+        </div>
+        <div class="step-dot" data-step="3">
+          <span class="step-number">3</span>
+          <span class="step-label">Checkout</span>
+        </div>
+        <div class="step-dot" data-step="4">
+          <span class="step-number">4</span>
+          <span class="step-label">Shipping</span>
+        </div>
+        <div class="step-dot" data-step="5">
+          <span class="step-number">5</span>
+          <span class="step-label">Payment</span>
+        </div>
+        <div class="step-dot" data-step="6">
+          <span class="step-number">6</span>
+          <span class="step-label">Complete</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Step 1: Browse Products -->
+      <section class="step-panel active" data-step="1">
+        <div class="step-header">
+          <h2>Step 1: Browse Products</h2>
+          <p class="step-description">Search and select a product to add to your cart</p>
+        </div>
+        
+        <div class="step-content">
+          <div class="search-box">
+            <input type="text" id="searchInput" class="input" placeholder="Search products..." value="headphones">
+            <button class="btn btn-primary" id="searchBtn">Search</button>
+          </div>
+          
+          <div class="products-grid" id="productsGrid">
+            <!-- Products will be loaded here -->
+            <div class="loading-placeholder">Click "Search" to browse products</div>
+          </div>
+        </div>
+
+        <div class="step-actions">
+          <button class="btn btn-secondary" disabled>← Back</button>
+          <button class="btn btn-primary" id="step1Next" disabled>Select Product & Continue →</button>
+        </div>
+      </section>
+
+      <!-- Step 2: Create Cart -->
+      <section class="step-panel" data-step="2">
+        <div class="step-header">
+          <h2>Step 2: Create Cart</h2>
+          <p class="step-description">Your cart has been created with the selected product</p>
+        </div>
+        
+        <div class="step-content">
+          <div class="cart-summary" id="cartSummary">
+            <!-- Cart will be displayed here -->
+          </div>
+          
+          <div class="api-call-info">
+            <h4>API Calls Made:</h4>
+            <code>POST /ucp/v1/carts</code>
+            <code>POST /ucp/v1/carts/{cartId}/items</code>
+          </div>
+        </div>
+
+        <div class="step-actions">
+          <button class="btn btn-secondary" data-goto="1">← Back</button>
+          <button class="btn btn-primary" id="step2Next">Create Checkout →</button>
+        </div>
+      </section>
+
+      <!-- Step 3: Create Checkout -->
+      <section class="step-panel" data-step="3">
+        <div class="step-header">
+          <h2>Step 3: Create Checkout</h2>
+          <p class="step-description">Enter your email to start the checkout process</p>
+        </div>
+        
+        <div class="step-content">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="buyerEmail">Email Address</label>
+              <input type="email" id="buyerEmail" class="input" placeholder="customer@example.com" value="test@example.com">
+            </div>
+            <div class="form-group">
+              <label for="buyerFirstName">First Name</label>
+              <input type="text" id="buyerFirstName" class="input" placeholder="John" value="John">
+            </div>
+            <div class="form-group">
+              <label for="buyerLastName">Last Name</label>
+              <input type="text" id="buyerLastName" class="input" placeholder="Doe" value="Doe">
+            </div>
+          </div>
+
+          <div class="checkout-preview" id="checkoutPreview">
+            <!-- Checkout preview will be shown here -->
+          </div>
+        </div>
+
+        <div class="step-actions">
+          <button class="btn btn-secondary" data-goto="2">← Back</button>
+          <button class="btn btn-primary" id="step3Next">Continue to Shipping →</button>
+        </div>
+      </section>
+
+      <!-- Step 4: Shipping -->
+      <section class="step-panel" data-step="4">
+        <div class="step-header">
+          <h2>Step 4: Shipping Address</h2>
+          <p class="step-description">Enter your shipping address and select a shipping option</p>
+        </div>
+        
+        <div class="step-content">
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label for="addressLine1">Address Line 1</label>
+              <input type="text" id="addressLine1" class="input" placeholder="123 Main St" value="123 Main Street">
+            </div>
+            <div class="form-group">
+              <label for="city">City</label>
+              <input type="text" id="city" class="input" placeholder="San Francisco" value="San Francisco">
+            </div>
+            <div class="form-group">
+              <label for="state">State</label>
+              <input type="text" id="state" class="input" placeholder="CA" value="CA">
+            </div>
+            <div class="form-group">
+              <label for="postalCode">Postal Code</label>
+              <input type="text" id="postalCode" class="input" placeholder="94102" value="94102">
+            </div>
+            <div class="form-group">
+              <label for="country">Country</label>
+              <input type="text" id="country" class="input" placeholder="US" value="US">
+            </div>
+          </div>
+
+          <div class="shipping-options" id="shippingOptions">
+            <!-- Shipping options will be loaded here -->
+          </div>
+        </div>
+
+        <div class="step-actions">
+          <button class="btn btn-secondary" data-goto="3">← Back</button>
+          <button class="btn btn-primary" id="step4Next">Continue to Payment →</button>
+        </div>
+      </section>
+
+      <!-- Step 5: Payment -->
+      <section class="step-panel" data-step="5">
+        <div class="step-header">
+          <h2>Step 5: Payment</h2>
+          <p class="step-description">Review your order and complete payment</p>
+        </div>
+        
+        <div class="step-content">
+          <div class="order-review" id="orderReview">
+            <!-- Order review will be shown here -->
+          </div>
+
+          <div class="payment-info">
+            <div class="mock-payment-badge">
+              <span class="badge-icon">🔒</span>
+              <span>Mock Payment (Test Mode)</span>
+            </div>
+            <p class="payment-note">This is a test environment. No real payment will be processed.</p>
+          </div>
+        </div>
+
+        <div class="step-actions">
+          <button class="btn btn-secondary" data-goto="4">← Back</button>
+          <button class="btn btn-success btn-lg" id="completePaymentBtn">
+            <span class="btn-icon">💳</span>
+            Complete Order
+          </button>
+        </div>
+      </section>
+
+      <!-- Step 6: Complete -->
+      <section class="step-panel" data-step="6">
+        <div class="step-header">
+          <div class="success-icon">✓</div>
+          <h2>Order Complete!</h2>
+          <p class="step-description">Your order has been successfully placed</p>
+        </div>
+        
+        <div class="step-content">
+          <div class="order-confirmation" id="orderConfirmation">
+            <!-- Order confirmation will be shown here -->
+          </div>
+
+          <div class="next-steps">
+            <h4>What's Next?</h4>
+            <ul>
+              <li>Track your order using the tracking API</li>
+              <li>View order history with listOrders</li>
+              <li>Process returns if needed</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="step-actions">
+          <button class="btn btn-secondary" id="viewOrderBtn">View Order Details</button>
+          <button class="btn btn-primary" id="startOverBtn">Start New Order →</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- API Log Sidebar -->
+    <aside class="api-log" id="apiLog">
+      <div class="api-log-header">
+        <h3>API Activity</h3>
+        <button class="btn btn-ghost btn-sm" id="clearLogBtn">Clear</button>
+      </div>
+      <div class="api-log-content" id="apiLogContent">
+        <div class="log-empty">API calls will appear here as you progress</div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner"></div>
+    <p id="loadingText">Processing...</p>
+  </div>
+
+  <script src="/test-ui/wizard/app.js"></script>
+</body>
+</html>
