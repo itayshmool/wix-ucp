@@ -8,25 +8,25 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.string().default('3000').transform(Number),
   
-  // Database
-  DATABASE_URL: z.string().url(),
+  // Database (PostgreSQL connection string)
+  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   
-  // Redis
-  REDIS_URL: z.string().url(),
+  // Redis (connection string)
+  REDIS_URL: z.string().min(1, 'REDIS_URL is required'),
   
-  // Wix API
-  WIX_API_KEY: z.string().min(1),
-  WIX_ACCOUNT_ID: z.string().min(1),
-  WIX_SITE_ID: z.string().min(1),
+  // Wix API (optional until you're ready to integrate)
+  WIX_API_KEY: z.string().optional(),
+  WIX_ACCOUNT_ID: z.string().optional(),
+  WIX_SITE_ID: z.string().optional(),
   
   // UCP Configuration
   UCP_HANDLER_ID: z.string().default('com.wix.payments'),
   UCP_VERSION: z.string().default('2026-01-11'),
-  UCP_BASE_URL: z.string().url().optional(),
+  UCP_BASE_URL: z.string().optional(),
   
   // Security
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
-  WEBHOOK_SECRET: z.string().min(16).optional(),
+  WEBHOOK_SECRET: z.string().optional(),
   
   // Logging
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
