@@ -1,0 +1,217 @@
+// Prisma Schema for Wix UCP Integration
+// PostgreSQL database on Render
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// OAuth & Identity
+// ─────────────────────────────────────────────────────────────
+
+/// OAuth sessions for identity linking
+/// Stores refresh tokens and consent records
+/// Retention: 30 days
+model OAuthSession {
+  id              String   @id @default(uuid())
+  memberId        String?  @map("member_id")
+  platformId      String   @map("platform_id")
+  
+  // Token hashes (never store raw tokens)
+  accessTokenHash  String  @map("access_token_hash")
+  refreshTokenHash String? @map("refresh_token_hash")
+  
+  // Scope
+  scope           String[]
+  
+  // Timestamps
+  expiresAt       DateTime @map("expires_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  // Indexes
+  @@index([memberId])
+  @@index([platformId])
+  @@index([expiresAt])
+  @@map("oauth_sessions")
+}
+
+/// OAuth consent records
+/// Tracks which scopes a member has granted to which platform
+model OAuthConsent {
+  id         String   @id @default(uuid())
+  memberId   String   @map("member_id")
+  platformId String   @map("platform_id")
+  scope      String[]
+  
+  grantedAt  DateTime @default(now()) @map("granted_at")
+  expiresAt  DateTime? @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  
+  @@unique([memberId, platformId])
+  @@index([memberId])
+  @@map("oauth_consents")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Webhooks
+// ─────────────────────────────────────────────────────────────
+
+/// Webhook subscriptions from platforms
+/// Retention: Permanent (until unsubscribed)
+model WebhookSubscription {
+  id          String   @id @default(uuid())
+  
+  // Subscriber info
+  platformId  String   @map("platform_id")
+  url         String
+  
+  // Events to subscribe to
+  events      String[]
+  
+  // Security
+  secretHash  String   @map("secret_hash")
+  
+  // Status
+  active      Boolean  @default(true)
+  
+  // Delivery stats
+  lastDeliveredAt DateTime? @map("last_delivered_at")
+  failureCount    Int       @default(0) @map("failure_count")
+  
+  // Timestamps
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  @@index([platformId])
+  @@index([active])
+  @@map("webhook_subscriptions")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Orders Cache
+// ─────────────────────────────────────────────────────────────
+
+/// Cached order data from Wix
+/// Used for fast lookups and order history
+/// Retention: 90 days
+model OrderCache {
+  id              String   @id @default(uuid())
+  
+  // Wix identifiers
+  wixOrderId      String   @unique @map("wix_order_id")
+  checkoutId      String?  @map("checkout_id")
+  memberId        String?  @map("member_id")
+  
+  // Order status
+  status          String
+  paymentStatus   String   @map("payment_status")
+  fulfillmentStatus String @map("fulfillment_status")
+  
+  // Summary
+  currency        String
+  totalAmount     Int      @map("total_amount") // Minor units (cents)
+  itemCount       Int      @map("item_count")
+  
+  // Full order data as JSON
+  data            Json
+  
+  // Sync tracking
+  syncedAt        DateTime @default(now()) @map("synced_at")
+  
+  // Timestamps
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  @@index([memberId])
+  @@index([checkoutId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("orders_cache")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Audit Logs
+// ─────────────────────────────────────────────────────────────
+
+/// Security and compliance audit logs
+/// Retention: 1 year
+model AuditLog {
+  id          String   @id @default(uuid())
+  
+  // Event info
+  eventType   String   @map("event_type")
+  action      String
+  
+  // Actor
+  actorType   String   @map("actor_type") // 'user', 'system', 'platform'
+  actorId     String?  @map("actor_id")
+  
+  // Resource
+  resourceType String  @map("resource_type")
+  resourceId   String? @map("resource_id")
+  
+  // Request context
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  requestId   String?  @map("request_id")
+  
+  // Result
+  success     Boolean
+  errorCode   String?  @map("error_code")
+  
+  // Additional data
+  metadata    Json?
+  
+  // Timestamp
+  timestamp   DateTime @default(now())
+  
+  @@index([eventType])
+  @@index([actorId])
+  @@index([resourceType, resourceId])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+// ─────────────────────────────────────────────────────────────
+// API Clients
+// ─────────────────────────────────────────────────────────────
+
+/// Registered API clients/platforms
+/// Retention: Permanent
+model ApiClient {
+  id          String   @id @default(uuid())
+  
+  // Client info
+  name        String
+  description String?
+  
+  // Credentials (hashed)
+  clientId    String   @unique @map("client_id")
+  secretHash  String   @map("secret_hash")
+  
+  // Permissions
+  allowedScopes String[] @map("allowed_scopes")
+  
+  // OAuth redirect URIs
+  redirectUris String[] @map("redirect_uris")
+  
+  // Status
+  active      Boolean  @default(true)
+  
+  // Rate limits (overrides default)
+  rateLimit   Int?     @map("rate_limit")
+  
+  // Timestamps
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  @@index([clientId])
+  @@index([active])
+  @@map("api_clients")
+}
