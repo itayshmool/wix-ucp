@@ -8,6 +8,7 @@ import swaggerUi from '@fastify/swagger-ui';
 import { healthRoutes } from './routes/health.js';
 import { paymentHandlerRoutes } from './modules/payment-handler/index.js';
 import { checkoutRoutes } from './modules/checkout/index.js';
+import { discoveryRoutes } from './modules/discovery/index.js';
 import { RATE_LIMITS } from './config/index.js';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
@@ -164,6 +165,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // Checkout routes
   await app.register(checkoutRoutes, { prefix: '/ucp/v1' });
+
+  // Discovery routes (at root for .well-known)
+  await app.register(discoveryRoutes);
 
   // ─────────────────────────────────────────────────────────────
   // Error Handling

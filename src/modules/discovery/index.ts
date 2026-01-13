@@ -7,10 +7,43 @@
  * See: .cursor/rules/modules/discovery.mdc
  */
 
-// Module exports will be added here
-// export * from './profile-builder.js';
-// export * from './capability-registry.js';
-// export * from './handler-registry.js';
-// export * from './routes.js';
+// Types
+export * from './types.js';
 
-export {};
+// Profile Builder
+export {
+  UCPProfileBuilder,
+  createProfileBuilder,
+  applyProfileContext,
+  createDefaultWixProfile,
+} from './profile-builder.js';
+
+// Capability Registry
+export {
+  CapabilityRegistry,
+  getCapabilityRegistry,
+  createCapabilityRegistry,
+  registerDefaultCapabilities,
+} from './capability-registry.js';
+
+// Handler Registry
+export {
+  PaymentHandlerRegistry,
+  getHandlerRegistry,
+  createHandlerRegistry,
+  registerWixPaymentsHandler,
+  type HandlerFilterCriteria,
+} from './handler-registry.js';
+
+// Negotiation
+export {
+  negotiate,
+  buildNegotiateResponse,
+  validateAgentProfile,
+  isViableForCheckout,
+  getMinimumCheckoutRequirements,
+  scoreNegotiation,
+} from './negotiation.js';
+
+// Routes
+export { discoveryRoutes } from './routes.js';
