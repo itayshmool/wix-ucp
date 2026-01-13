@@ -7,10 +7,34 @@
  * See: .cursor/rules/modules/identity.mdc
  */
 
-// Module exports will be added here
-// export * from './service.js';
-// export * from './oauth.js';
-// export * from './session.js';
-// export * from './routes.js';
+// Types
+export * from './types.js';
 
-export {};
+// Token Manager
+export {
+  TokenManager,
+  createTokenManager,
+  getTokenManager,
+} from './token-manager.js';
+
+// OAuth Service
+export {
+  OAuthService,
+  OAuthError,
+  createOAuthService,
+  getOAuthService,
+} from './oauth-service.js';
+
+// Member Mapper
+export {
+  mapMemberToUserInfo,
+  mapMemberToProfile,
+  addLoyaltyToUserInfo,
+  getMemberData,
+  getMockMember,
+  getMockLoyaltyInfo,
+  getMockSavedPaymentMethods,
+} from './member-mapper.js';
+
+// Routes
+export { identityRoutes } from './routes.js';
