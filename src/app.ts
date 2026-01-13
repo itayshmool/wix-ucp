@@ -12,7 +12,7 @@ import { RATE_LIMITS } from './config/index.js';
  */
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
-    logger,
+    loggerInstance: logger, // Use loggerInstance for pre-created pino logger
     trustProxy: true, // Required for Render (behind proxy)
     requestIdHeader: 'x-request-id',
     requestIdLogLabel: 'requestId',
