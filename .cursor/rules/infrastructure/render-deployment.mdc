@@ -1,0 +1,232 @@
+---
+description: Render deployment structure and configuration for the Wix UCP Integration
+globs: ["render.yaml", "src/server.ts", "src/routes/health.ts", "prisma/**"]
+alwaysApply: false
+---
+
+# Render Deployment Structure
+
+## Overview
+
+The Wix UCP Integration is deployed on Render with the following architecture:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         RENDER CLOUD                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│   ┌─────────────────────────────────────────────────────────┐  │
+│   │                 wix-ucp-api (Web Service)               │  │
+│   │                                                         │  │
+│   │   URL: https://wix-ucp-api.onrender.com                │  │
+│   │   Runtime: Node.js 22                                   │  │
+│   │   Plan: Starter                                         │  │
+│   │   Region: Oregon                                        │  │
+│   │                                                         │  │
+│   │   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐   │  │
+│   │   │   Fastify   │  │   Prisma    │  │   ioredis   │   │  │
+│   │   │   Server    │  │   Client    │  │   Client    │   │  │
+│   │   └──────┬──────┘  └──────┬──────┘  └──────┬──────┘   │  │
+│   │          │                │                │          │  │
+│   └──────────┼────────────────┼────────────────┼──────────┘  │
+│              │                │                │              │
+│              │                ▼                ▼              │
+│   ┌──────────┴─────┐   ┌───────────────┐  ┌───────────────┐  │
+│   │    Internet    │   │  wix-ucp-db   │  │ wix-ucp-redis │  │
+│   │   (Public)     │   │  (PostgreSQL) │  │  (Key-Value)  │  │
+│   │                │   │               │  │               │  │
+│   │                │   │  Plan: Basic  │  │ Plan: Starter │  │
+│   │                │   │  256MB RAM    │  │               │  │
+│   │                │   │  15GB Disk    │  │               │  │
+│   └────────────────┘   └───────────────┘  └───────────────┘  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Service IDs
+
+| Resource | Render ID | Dashboard URL |
+|----------|-----------|---------------|
+| Web Service | `srv-d5jbh795pdvs738e5ad0` | https://dashboard.render.com/web/srv-d5jbh795pdvs738e5ad0 |
+| PostgreSQL | `dpg-d5jbh3vfte5s73bgec4g-a` | https://dashboard.render.com/d/dpg-d5jbh3vfte5s73bgec4g-a |
+| Redis | `red-d5jbh52li9vc73e3hkdg` | https://dashboard.render.com/r/red-d5jbh52li9vc73e3hkdg |
+
+## URLs
+
+| Service | URL |
+|---------|-----|
+| Production API | https://wix-ucp-api.onrender.com |
+| Health Check | https://wix-ucp-api.onrender.com/health |
+
+## Environment Variables
+
+### Configured via Render Dashboard
+
+```bash
+# Server
+NODE_ENV=production
+PORT=3000
+LOG_LEVEL=info
+
+# UCP Configuration
+UCP_VERSION=2026-01-11
+UCP_HANDLER_ID=com.wix.payments
+
+# Database (Internal connection)
+DATABASE_URL=postgres://wix_ucp_db_user:***@dpg-d5jbh3vfte5s73bgec4g-a/wix_ucp_db
+
+# Redis (Internal connection)
+REDIS_URL=redis://red-d5jbh52li9vc73e3hkdg:6379
+
+# Security
+JWT_SECRET=<32+ character secret>
+
+# Wix API (Optional - configure when ready)
+WIX_API_KEY=<your-wix-api-key>
+WIX_ACCOUNT_ID=<your-wix-account-id>
+WIX_SITE_ID=<your-wix-site-id>
+```
+
+## Build & Deploy
+
+### Build Command
+
+```bash
+npm ci --include=dev && npm run db:generate && npm run db:migrate:deploy && npm run build
+```
+
+### Start Command
+
+```bash
+npm run start
+```
+
+### Auto-Deploy
+
+- **Trigger**: Push to `main` branch
+- **Source**: https://github.com/itayshmool/wix-ucp
+
+## Health Checks
+
+### Endpoints
+
+| Endpoint | Purpose | Success Response |
+|----------|---------|------------------|
+| `GET /health` | Full health check | `200` with DB/Redis status |
+| `GET /health/ready` | Readiness probe | `200` if can serve traffic |
+| `GET /health/live` | Liveness probe | `200` if process running |
+
+### Health Response Structure
+
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-01-13T21:43:42.000Z",
+  "version": "0.1.0",
+  "uptime": 123.45,
+  "checks": {
+    "database": "ok",
+    "redis": "ok"
+  }
+}
+```
+
+### Failure Behavior
+
+- If `database` or `redis` returns `error`:
+  - Status changes to `unhealthy`
+  - HTTP 503 returned
+  - Render marks service as unhealthy
+
+## Database Schema
+
+PostgreSQL stores persistent data:
+
+| Table | Purpose |
+|-------|---------|
+| `oauth_sessions` | OAuth 2.0 authorization sessions |
+| `oauth_consents` | User consent records |
+| `webhook_subscriptions` | Registered webhook endpoints |
+| `orders_cache` | Cached order data |
+| `audit_logs` | Security event logging |
+| `api_clients` | Registered API clients |
+
+### Migrations
+
+- **Development**: `npm run db:migrate` (creates migration files)
+- **Production**: `npm run db:migrate:deploy` (applies migrations)
+- **Location**: `prisma/migrations/`
+
+## Redis Data
+
+Redis stores ephemeral/cached data:
+
+| Key Pattern | Purpose | TTL |
+|-------------|---------|-----|
+| `token:{checkoutId}:{tokenId}` | Payment tokens | 30 min |
+| `checkout:{checkoutId}` | Checkout sessions | 24 hours |
+| `mcp:session:{sessionId}` | MCP sessions | 1 hour |
+| `cache:profile:{siteId}` | Business profile cache | 5 min |
+| `rate:{clientId}:{endpoint}` | Rate limit counters | 1 min |
+| `idempotency:{key}` | Idempotency keys | 24 hours |
+
+## Scaling
+
+### Current Configuration
+
+- **Instances**: 1
+- **Plan**: Starter (512MB RAM, 0.5 CPU)
+
+### Upgrade Path
+
+1. **Vertical**: Upgrade to Standard/Pro plan
+2. **Horizontal**: Increase instance count (requires Pro plan)
+3. **Database**: Upgrade to `pro_4gb` or higher for connection pooling
+
+## Monitoring
+
+### Logs
+
+- Access via: Render Dashboard → Service → Logs
+- Format: JSON (pino)
+- Retention: 7 days (Starter plan)
+
+### Metrics
+
+Available via Render MCP or Dashboard:
+- CPU usage
+- Memory usage
+- HTTP request count
+- Response latency
+- Instance count
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Build fails with "Cannot find @types/node"**
+   - Ensure build command includes `--include=dev`
+
+2. **App crashes with "Environment validation failed"**
+   - Check all required env vars are set in Render Dashboard
+
+3. **Health check returns 503**
+   - Check DATABASE_URL is correct internal URL
+   - Check REDIS_URL is correct internal URL
+
+4. **Deploy stuck in "queued"**
+   - Starter plan has limited build capacity
+   - Wait or upgrade plan
+
+### Useful Commands
+
+```bash
+# View recent deploys
+render deploys list --service srv-d5jbh795pdvs738e5ad0
+
+# View logs
+render logs --service srv-d5jbh795pdvs738e5ad0
+
+# Trigger manual deploy
+render deploys create --service srv-d5jbh795pdvs738e5ad0
+```
