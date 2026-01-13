@@ -1,4 +1,4 @@
-import Redis from 'ioredis';
+import { Redis as RedisClient } from 'ioredis';
 import { logger } from './logger.js';
 import { TTL } from '../config/index.js';
 
@@ -29,12 +29,12 @@ export const REDIS_KEYS = {
 /**
  * Redis client singleton
  */
-let redis: Redis | null = null;
+let redis: RedisClient | null = null;
 
 /**
  * Get or create Redis client
  */
-export function getRedis(): Redis {
+export function getRedis(): RedisClient {
   if (!redis) {
     const redisUrl = process.env.REDIS_URL;
     
@@ -42,9 +42,9 @@ export function getRedis(): Redis {
       throw new Error('REDIS_URL environment variable is not set');
     }
 
-    redis = new Redis(redisUrl, {
+    redis = new RedisClient(redisUrl, {
       maxRetriesPerRequest: 3,
-      retryStrategy: (times) => {
+      retryStrategy: (times: number) => {
         if (times > 3) {
           logger.error({ times }, 'Redis connection failed after max retries');
           return null; // Stop retrying
@@ -53,7 +53,7 @@ export function getRedis(): Redis {
         logger.warn({ times, delay }, 'Retrying Redis connection');
         return delay;
       },
-      reconnectOnError: (err) => {
+      reconnectOnError: (err: Error) => {
         const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEDOUT'];
         return targetErrors.some(e => err.message.includes(e));
       },
@@ -68,7 +68,7 @@ export function getRedis(): Redis {
       logger.info('Redis client ready');
     });
 
-    redis.on('error', (err) => {
+    redis.on('error', (err: Error) => {
       logger.error({ error: err.message }, 'Redis error');
     });
 
@@ -264,4 +264,4 @@ export async function deleteToken(
   return deleteKey(key);
 }
 
-export { Redis };
+export { RedisClient };

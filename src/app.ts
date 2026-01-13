@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyError, type FastifyRequest, type FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
@@ -65,15 +65,18 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   // Cookie support (for session tokens)
-  await app.register(cookie, {
-    secret: process.env.JWT_SECRET,
-    hook: 'onRequest',
-    parseOptions: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-    },
-  });
+  const jwtSecret = process.env.JWT_SECRET;
+  if (jwtSecret) {
+    await app.register(cookie, {
+      secret: jwtSecret,
+      hook: 'onRequest',
+      parseOptions: {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+      },
+    });
+  }
 
   // ─────────────────────────────────────────────────────────────
   // Routes
@@ -89,7 +92,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   // Error Handling
   // ─────────────────────────────────────────────────────────────
 
-  app.setErrorHandler((error, request, reply) => {
+  app.setErrorHandler((error: FastifyError, request: FastifyRequest, reply: FastifyReply) => {
     // Log full error server-side
     request.log.error({
       error: {
@@ -118,7 +121,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   // 404 handler
-  app.setNotFoundHandler((_request, reply) => {
+  app.setNotFoundHandler((_request: FastifyRequest, reply: FastifyReply) => {
     reply.status(404).send({
       error: 'NOT_FOUND',
       message: 'The requested resource was not found',

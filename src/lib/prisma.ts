@@ -11,34 +11,15 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
+const isDevelopment = process.env.NODE_ENV === 'development';
+
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log:
-      process.env.NODE_ENV === 'development'
-        ? [
-            { emit: 'event', level: 'query' },
-            { emit: 'event', level: 'error' },
-            { emit: 'event', level: 'warn' },
-          ]
-        : [{ emit: 'event', level: 'error' }],
+    log: isDevelopment
+      ? ['query', 'error', 'warn']
+      : ['error'],
   });
-
-// Log queries in development
-if (process.env.NODE_ENV === 'development') {
-  prisma.$on('query', (e) => {
-    logger.debug({
-      query: e.query,
-      params: e.params,
-      duration: `${e.duration}ms`,
-    }, 'Prisma query');
-  });
-}
-
-// Log errors always
-prisma.$on('error', (e) => {
-  logger.error({ error: e }, 'Prisma error');
-});
 
 // Prevent multiple instances in development (hot reload)
 if (process.env.NODE_ENV !== 'production') {

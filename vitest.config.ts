@@ -3,47 +3,24 @@ import { resolve } from 'path';
 
 export default defineConfig({
   test: {
-    // Global test settings
     globals: true,
     environment: 'node',
-    
-    // Test file patterns
-    include: [
-      'src/**/*.test.ts',
-      'tests/**/*.test.ts',
-    ],
-    exclude: [
-      'node_modules',
-      'dist',
-    ],
-    
-    // Setup files
     setupFiles: ['./tests/setup.ts'],
-    
-    // Timeouts
+    include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
+    exclude: ['node_modules', 'dist', 'tests/e2e/**'],
     testTimeout: 10000,
     hookTimeout: 10000,
-    
-    // Coverage configuration
-    // Minimum 70% as per practices/testing.mdc
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'text-summary', 'json', 'html'],
-      reportsDirectory: './coverage',
-      
-      // Files to include in coverage
-      include: ['src/**/*.ts'],
-      
-      // Files to exclude from coverage
+      reporter: ['text', 'json', 'html'],
       exclude: [
-        'src/**/*.test.ts',
-        'src/**/*.d.ts',
-        'src/server.ts',      // Entry point
-        'src/config/env.ts',  // Environment config
         'node_modules/**',
+        'dist/**',
+        'tests/**',
+        '**/*.d.ts',
+        '**/*.test.ts',
+        '**/index.ts',
       ],
-      
-      // Coverage thresholds (fail if below)
       thresholds: {
         lines: 70,
         functions: 70,
@@ -51,27 +28,16 @@ export default defineConfig({
         statements: 70,
       },
     },
-    
-    // Reporter settings
+    pool: 'forks',
     reporters: ['verbose'],
-    
-    // Pool settings for parallel execution
-    pool: 'threads',
-    poolOptions: {
-      threads: {
-        singleThread: false,
-      },
-    },
   },
-  
-  // Path aliases (match tsconfig.json)
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
-      '@/core': resolve(__dirname, './src/core'),
-      '@/modules': resolve(__dirname, './src/modules'),
-      '@/adapters': resolve(__dirname, './src/adapters'),
-      '@/lib': resolve(__dirname, './src/lib'),
+      '@core': resolve(__dirname, './src/core'),
+      '@lib': resolve(__dirname, './src/lib'),
+      '@modules': resolve(__dirname, './src/modules'),
+      '@config': resolve(__dirname, './src/config'),
     },
   },
 });
