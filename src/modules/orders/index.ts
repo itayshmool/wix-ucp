@@ -7,11 +7,47 @@
  * See: .cursor/rules/modules/orders.mdc
  */
 
-// Module exports will be added here
-// export * from './service.js';
-// export * from './tracker.js';
-// export * from './returns.js';
-// export * from './webhooks.js';
-// export * from './routes.js';
+// Types
+export * from './types.js';
 
-export {};
+// State Machine
+export {
+  isValidOrderTransition,
+  getValidOrderTransitions,
+  isTerminalOrderStatus,
+  canCancelOrder,
+  canReturnOrder,
+  isFulfilledOrder,
+  isValidPaymentTransition,
+  isPaymentComplete,
+  hasRefund,
+  isValidShipmentTransition,
+  isShipmentInProgress,
+  isShipmentDelivered,
+  isValidReturnTransition,
+  isReturnPendingApproval,
+  isReturnComplete,
+  mapWixOrderStatus,
+  mapWixPaymentStatus,
+  mapWixFulfillmentStatus,
+  getOrderStatusLabel,
+  getOrderStatusColor,
+} from './state-machine.js';
+
+// Mappers
+export {
+  mapWixOrderToUCP,
+  mapWixOrderToSummary,
+  mapWixFulfillmentsToShipments,
+  generateOrderLinks,
+  type WixOrder,
+} from './mappers.js';
+
+// Service
+export {
+  OrderService,
+  createOrderService,
+} from './service.js';
+
+// Routes
+export { orderRoutes } from './routes.js';

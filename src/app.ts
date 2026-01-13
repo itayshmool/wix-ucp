@@ -10,6 +10,7 @@ import { paymentHandlerRoutes } from './modules/payment-handler/index.js';
 import { checkoutRoutes } from './modules/checkout/index.js';
 import { discoveryRoutes } from './modules/discovery/index.js';
 import { identityRoutes } from './modules/identity/index.js';
+import { orderRoutes } from './modules/orders/index.js';
 import { RATE_LIMITS } from './config/index.js';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
@@ -172,6 +173,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // Identity routes
   await app.register(identityRoutes);
+
+  // Order routes
+  await app.register(orderRoutes, { prefix: '/ucp/v1' });
 
   // ─────────────────────────────────────────────────────────────
   // Error Handling
