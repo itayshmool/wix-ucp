@@ -1,0 +1,284 @@
+# Infrastructure & Deployment
+
+## Hosting Platform
+
+**Platform:** Render (render.com)
+**Region:** Choose closest to primary user base
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      RENDER PLATFORM                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│   ┌──────────────────┐                                      │
+│   │   Web Service    │                                      │
+│   │   (Node.js 22)   │                                      │
+│   │                  │                                      │
+│   │ • UCP REST API   │                                      │
+│   │ • MCP Server     │                                      │
+│   │ • OAuth Endpoints│                                      │
+│   │ • Webhooks       │                                      │
+│   └────────┬─────────┘                                      │
+│            │                                                 │
+│     ┌──────┴──────┐                                         │
+│     ▼             ▼                                         │
+│ ┌────────┐   ┌────────┐                                     │
+│ │ Redis  │   │Postgres│                                     │
+│ │        │   │        │                                     │
+│ │• Tokens│   │• Orders│                                     │
+│ │• Cache │   │• OAuth │                                     │
+│ │• Rate  │   │• Webhook│                                    │
+│ │ Limits │   │  Subs  │                                     │
+│ │• Sessions│ │• Audit │                                     │
+│ └────────┘   └────────┘                                     │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+              ┌───────────────────────────────┐
+              │         Wix Platform          │
+              │   Payments • eCommerce • MCP  │
+              └───────────────────────────────┘
+```
+
+## Technology Stack
+
+| Layer | Technology | Version |
+|-------|------------|---------|
+| Runtime | Node.js | 22 LTS |
+| Language | TypeScript | 5.5+ |
+| Framework | Fastify | 5.x |
+| Database | PostgreSQL | 16 |
+| Cache | Redis | 7.x |
+| ORM | Prisma | 6.x |
+| Redis Client | ioredis | 5.x |
+| Validation | Zod | 3.x |
+| JWT/Auth | jose | 5.x |
+| MCP SDK | @modelcontextprotocol/sdk | latest |
+| Logging | pino | 9.x |
+| Testing | Vitest | 2.x |
+| HTTP Testing | Supertest | 7.x |
+
+## Data Storage Strategy
+
+### Redis (Ephemeral/Fast Data)
+
+| Data Type | TTL | Purpose |
+|-----------|-----|---------|
+| Payment Tokens | 15 min | UCP tokenization binding |
+| Checkout Sessions | 1 hour | Active checkout state |
+| MCP Sessions | 30 min | AI agent sessions |
+| Rate Limit Counters | 1 min | API rate limiting |
+| Profile Cache | 5 min | Business profile cache |
+
+**Key Patterns:**
+```
+token:{checkoutId}:{tokenId}     → Payment token data
+checkout:{checkoutId}            → Checkout session
+mcp:session:{sessionId}          → MCP session
+rate:{clientId}:{endpoint}       → Rate limit counter
+cache:profile:{siteId}           → Cached business profile
+```
+
+### PostgreSQL (Persistent Data)
+
+| Table | Purpose | Retention |
+|-------|---------|-----------|
+| oauth_sessions | Refresh tokens, consents | 30 days |
+| webhook_subscriptions | Registered webhooks | Permanent |
+| orders_cache | Order data mirror | 90 days |
+| audit_logs | Security/compliance logs | 1 year |
+| api_clients | Registered API clients | Permanent |
+
+## Render Services Configuration
+
+### Web Service
+
+```yaml
+# render.yaml
+services:
+  - type: web
+    name: wix-ucp-api
+    runtime: node
+    region: oregon
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: wix-ucp-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: wix-ucp-redis
+          type: redis
+          property: connectionString
+```
+
+### PostgreSQL Database
+
+```yaml
+databases:
+  - name: wix-ucp-db
+    plan: starter
+    region: oregon
+    postgresMajorVersion: 16
+```
+
+### Redis Instance
+
+```yaml
+services:
+  - type: redis
+    name: wix-ucp-redis
+    plan: starter
+    region: oregon
+    maxmemoryPolicy: allkeys-lru
+```
+
+## Environment Variables
+
+```env
+# Node
+NODE_ENV=production
+PORT=3000
+
+# Database
+DATABASE_URL=postgresql://...
+
+# Redis
+REDIS_URL=redis://...
+
+# Wix API
+WIX_API_KEY=
+WIX_ACCOUNT_ID=
+WIX_SITE_ID=
+
+# UCP Configuration
+UCP_HANDLER_ID=com.wix.payments
+UCP_VERSION=2026-01-11
+UCP_BASE_URL=https://your-app.onrender.com
+
+# Security
+JWT_SECRET=
+OAUTH_CLIENT_SECRET=
+WEBHOOK_SECRET=
+
+# Logging
+LOG_LEVEL=info
+```
+
+## Health Check Endpoint
+
+```typescript
+// GET /health
+interface HealthResponse {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  timestamp: string;
+  version: string;
+  checks: {
+    database: 'ok' | 'error';
+    redis: 'ok' | 'error';
+    wixApi: 'ok' | 'error';
+  };
+}
+```
+
+## Deployment Pipeline
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   GitHub    │────▶│   Render    │────▶│ Production  │
+│   Push      │     │   Build     │     │  Deploy     │
+└─────────────┘     └─────────────┘     └─────────────┘
+      │                   │                   │
+      │                   ▼                   │
+      │           ┌─────────────┐            │
+      │           │   Prisma    │            │
+      │           │  Migrate    │            │
+      │           └─────────────┘            │
+      │                                       │
+      └───────────────────────────────────────┘
+              Auto-deploy on main branch
+```
+
+## Scaling Considerations
+
+### Current (Starter)
+- 1 web service instance
+- PostgreSQL: 1GB storage
+- Redis: 25MB memory
+
+### Growth Path
+1. **Traffic increase**: Scale web service horizontally
+2. **Data growth**: Upgrade PostgreSQL plan
+3. **Cache pressure**: Upgrade Redis plan
+4. **Global users**: Add Render regions
+
+## Cost Estimate
+
+| Service | Free Tier | Starter | Pro |
+|---------|-----------|---------|-----|
+| Web Service | 750 hrs/mo | $7/mo | $25/mo |
+| PostgreSQL | 90-day trial | $7/mo | $20/mo |
+| Redis | 25MB trial | $10/mo | $30/mo |
+| **Monthly Total** | $0 (limited) | **~$24/mo** | ~$75/mo |
+
+## Security Configuration
+
+### Network
+- HTTPS only (Render provides SSL)
+- Environment variables for secrets
+- No hardcoded credentials
+
+### Headers
+```typescript
+// Security headers (via @fastify/helmet)
+{
+  contentSecurityPolicy: true,
+  crossOriginEmbedderPolicy: true,
+  crossOriginOpenerPolicy: true,
+  crossOriginResourcePolicy: true,
+  strictTransportSecurity: true,
+}
+```
+
+### Rate Limiting
+```typescript
+// Per endpoint limits
+{
+  '/tokenize': { max: 100, timeWindow: '1 minute' },
+  '/checkout-sessions': { max: 60, timeWindow: '1 minute' },
+  '/identity/token': { max: 20, timeWindow: '1 minute' },
+  'default': { max: 1000, timeWindow: '1 minute' },
+}
+```
+
+## Monitoring & Logging
+
+### Render Dashboard
+- CPU/Memory metrics
+- Request logs
+- Deploy history
+
+### Application Logging
+```typescript
+// Structured logging with pino
+{
+  level: 'info',
+  transport: {
+    target: 'pino-pretty', // dev only
+  },
+  redact: ['req.headers.authorization', 'payload.credential'],
+}
+```
+
+### Recommended Additions
+- Sentry for error tracking
+- Render metrics for custom dashboards
