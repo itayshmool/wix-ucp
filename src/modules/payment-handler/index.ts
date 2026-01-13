@@ -7,10 +7,25 @@
  * See: .cursor/rules/modules/payment-handler.mdc
  */
 
-// Module exports will be added here
-// export * from './handler.js';
-// export * from './tokenizer.js';
-// export * from './detokenizer.js';
-// export * from './routes.js';
+// Types
+export * from './types.js';
 
-export {};
+// Configuration
+export * from './config.js';
+
+// Schemas
+export * from './schemas.js';
+
+// Services
+export { PaymentTokenizer, createTokenizer } from './tokenizer.js';
+export { PaymentDetokenizer, createDetokenizer } from './detokenizer.js';
+
+// Main handler
+export {
+  WixPaymentsHandler,
+  createWixPaymentsHandler,
+  createDefaultHandler,
+} from './handler.js';
+
+// Routes
+export { paymentHandlerRoutes } from './routes.js';

@@ -3,7 +3,10 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import cookie from '@fastify/cookie';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import { healthRoutes } from './routes/health.js';
+import { paymentHandlerRoutes } from './modules/payment-handler/index.js';
 import { RATE_LIMITS } from './config/index.js';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
@@ -102,11 +105,61 @@ export async function buildApp(): Promise<FastifyInstance> {
   }
 
   // ─────────────────────────────────────────────────────────────
+  // API Documentation (Swagger)
+  // ─────────────────────────────────────────────────────────────
+
+  await app.register(swagger, {
+    openapi: {
+      openapi: '3.0.0',
+      info: {
+        title: 'Wix UCP Integration API',
+        description: 'Universal Commerce Protocol integration for Wix Payments and eCommerce',
+        version: '0.1.0',
+      },
+      servers: [
+        {
+          url: process.env.UCP_BASE_URL ?? 'http://localhost:3000',
+          description: isDevelopment ? 'Development server' : 'Production server',
+        },
+      ],
+      tags: [
+        { name: 'Health', description: 'Health check endpoints' },
+        { name: 'Payment Handler', description: 'Payment tokenization and detokenization' },
+        { name: 'Checkout', description: 'UCP Checkout capability' },
+        { name: 'Identity', description: 'OAuth 2.0 identity linking' },
+        { name: 'Orders', description: 'Order management' },
+        { name: 'Discovery', description: 'UCP profile discovery' },
+      ],
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+          },
+        },
+      },
+    },
+  });
+
+  await app.register(swaggerUi, {
+    routePrefix: '/docs',
+    uiConfig: {
+      docExpansion: 'list',
+      deepLinking: true,
+    },
+    staticCSP: true,
+  });
+
+  // ─────────────────────────────────────────────────────────────
   // Routes
   // ─────────────────────────────────────────────────────────────
 
   // Health check routes (no auth required)
   await app.register(healthRoutes);
+
+  // Payment Handler routes
+  await app.register(paymentHandlerRoutes);
 
   // UCP API routes will be registered here
   // await app.register(ucpRoutes, { prefix: '/ucp/v1' });

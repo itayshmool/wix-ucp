@@ -5,10 +5,21 @@
  * Provides typed interfaces for Wix services.
  */
 
-// Adapters will be added here
-// export * from './client.js';
-// export * from './payments.js';
-// export * from './ecommerce.js';
-// export * from './members.js';
+// Types
+export * from './types.js';
 
-export {};
+// Base client
+export { WixClient, WixClientError, createWixClient, type WixClientConfig } from './client.js';
+
+// Payments client
+export {
+  WixPaymentsClient,
+  createWixPaymentsClient,
+  createMockWixPaymentsClient,
+} from './payments.js';
+
+// eCommerce client will be added later
+// export * from './ecommerce.js';
+
+// Members client will be added later
+// export * from './members.js';
