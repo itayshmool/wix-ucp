@@ -18,8 +18,23 @@ export {
   createMockWixPaymentsClient,
 } from './payments.js';
 
-// eCommerce client will be added later
-// export * from './ecommerce.js';
+// eCommerce client
+export {
+  WixEcommerceClient,
+  createWixEcommerceClient,
+  getWixEcommerceClient,
+  type WixEcommerceClientOptions,
+  type CreateCartRequest,
+  type WixCart,
+  type AddToCartRequest,
+  type UpdateCartItemRequest,
+  type CreateCheckoutFromCartRequest,
+  type UpdateCheckoutRequest,
+  type CreateOrderFromCheckoutRequest,
+  type ShippingRatesResponse,
+  type ListOrdersRequest,
+  type ListOrdersResponse,
+} from './ecommerce.js';
 
 // Members client will be added later
 // export * from './members.js';

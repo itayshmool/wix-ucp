@@ -7,6 +7,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { healthRoutes } from './routes/health.js';
 import { paymentHandlerRoutes } from './modules/payment-handler/index.js';
+import { checkoutRoutes } from './modules/checkout/index.js';
 import { RATE_LIMITS } from './config/index.js';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
@@ -161,8 +162,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   // Payment Handler routes
   await app.register(paymentHandlerRoutes);
 
-  // UCP API routes will be registered here
-  // await app.register(ucpRoutes, { prefix: '/ucp/v1' });
+  // Checkout routes
+  await app.register(checkoutRoutes, { prefix: '/ucp/v1' });
 
   // ─────────────────────────────────────────────────────────────
   // Error Handling

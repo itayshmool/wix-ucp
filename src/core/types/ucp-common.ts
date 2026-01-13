@@ -61,6 +61,11 @@ export interface Buyer {
 }
 
 /**
+ * Item type (physical vs digital)
+ */
+export type ItemType = 'physical' | 'digital' | 'service';
+
+/**
  * Item details within a line item
  */
 export interface ItemDetails {
@@ -76,6 +81,8 @@ export interface ItemDetails {
   imageUrl?: string;
   /** URL to product page (optional) */
   productUrl?: string;
+  /** Item type (physical, digital, service) - defaults to physical */
+  type?: ItemType;
 }
 
 /**
