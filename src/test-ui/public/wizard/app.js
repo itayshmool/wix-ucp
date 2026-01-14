@@ -220,16 +220,29 @@ function renderProducts(products) {
     return;
   }
   
-  elements.productsGrid.innerHTML = products.map(product => `
-    <div class="product-card" data-id="${product.id}">
-      <div class="product-image">
-        ${product.images?.[0] ? `<img src="${product.images[0]}" alt="${product.name}">` : '📦'}
+  elements.productsGrid.innerHTML = products.map(product => {
+    // Handle price format - API returns either string "$X.XX" or object {amount: X}
+    let priceDisplay;
+    if (typeof product.price === 'string') {
+      // Price is already formatted (e.g., "$15.00 (was $15.00)")
+      priceDisplay = product.price.split(' ')[0]; // Extract first part "$15.00"
+    } else if (product.price?.amount !== undefined) {
+      priceDisplay = `$${product.price.amount.toFixed(2)}`;
+    } else {
+      priceDisplay = 'N/A';
+    }
+    
+    return `
+      <div class="product-card" data-id="${product.id}">
+        <div class="product-image">
+          ${product.images?.[0] ? `<img src="${product.images[0]}" alt="${product.name}">` : '📦'}
+        </div>
+        <div class="product-name">${product.name}</div>
+        <div class="product-price">${priceDisplay}</div>
+        <div class="product-stock ${product.inStock ? 'in-stock' : ''}">${product.inStock ? '✓ In Stock' : 'Out of Stock'}</div>
       </div>
-      <div class="product-name">${product.name}</div>
-      <div class="product-price">$${product.price.amount.toFixed(2)}</div>
-      <div class="product-stock ${product.inStock ? 'in-stock' : ''}">${product.inStock ? '✓ In Stock' : 'Out of Stock'}</div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
   
   // Add click handlers
   elements.productsGrid.querySelectorAll('.product-card').forEach(card => {
