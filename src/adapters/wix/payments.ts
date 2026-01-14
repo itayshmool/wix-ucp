@@ -6,7 +6,7 @@
  */
 
 import { logger } from '../../lib/logger.js';
-import { WixClient, WixClientError, createWixClient } from './client.js';
+import { WixClient, WixClientError, createWixClient, isDemoMode } from './client.js';
 import type {
   WixCreateCardTokenRequest,
   WixCardTokenResponse,
@@ -36,16 +36,21 @@ export class WixPaymentsClient {
   private mockMode: boolean;
 
   constructor(client?: WixClient | null, forceMockMode = false) {
-    if (forceMockMode) {
+    // Use DEMO_MODE environment variable to control mock mode
+    // Can be overridden by forceMockMode for testing
+    if (forceMockMode || isDemoMode()) {
       this.client = null;
       this.mockMode = true;
+      logger.info('WixPaymentsClient initialized in DEMO mode (mock data)');
     } else {
       this.client = client === undefined ? createWixClient() : client;
       this.mockMode = !this.client;
-    }
-
-    if (this.mockMode) {
-      logger.warn('WixPaymentsClient running in mock mode - no real API calls will be made');
+      
+      if (this.mockMode) {
+        logger.warn('Wix credentials missing - falling back to DEMO mode');
+      } else {
+        logger.info('WixPaymentsClient initialized in LIVE mode (real Wix APIs)');
+      }
     }
   }
 

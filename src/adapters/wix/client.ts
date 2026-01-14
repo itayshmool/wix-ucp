@@ -5,8 +5,17 @@
  * Handles authentication, retries, and error mapping.
  */
 
+import { env } from '../../config/env.js';
 import { logger } from '../../lib/logger.js';
 import type { WixApiError } from './types.js';
+
+/**
+ * Check if the application is running in demo mode
+ * When true, mock data is used instead of real Wix API calls
+ */
+export function isDemoMode(): boolean {
+  return env.DEMO_MODE;
+}
 
 /**
  * Wix API client configuration

@@ -19,6 +19,7 @@ process.env.NODE_ENV = 'test';
 process.env.LOG_LEVEL = 'error'; // Suppress logs during tests
 
 // Mock required env vars for unit tests
+process.env.DEMO_MODE = 'true'; // Always use mock data in tests
 process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters-long';
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
 process.env.REDIS_URL = 'redis://localhost:6379';

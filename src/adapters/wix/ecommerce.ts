@@ -6,7 +6,7 @@
  */
 
 import { logger } from '../../lib/logger.js';
-import { WixClient, WixClientError, createWixClient } from './client.js';
+import { WixClient, WixClientError, createWixClient, isDemoMode } from './client.js';
 import type {
   WixCheckout,
   WixLineItem,
@@ -210,11 +210,22 @@ export class WixEcommerceClient {
   private mockMode: boolean;
 
   constructor(client?: WixClient | null, options: WixEcommerceClientOptions = {}) {
-    this.client = client ?? createWixClient();
-    this.mockMode = options.mockMode ?? !this.client;
-
+    // Use DEMO_MODE environment variable to control mock mode
+    // Can be overridden by options.mockMode for testing
+    this.mockMode = options.mockMode ?? isDemoMode();
+    
+    // Only create Wix client if not in mock mode
     if (this.mockMode) {
-      logger.info('WixEcommerceClient initialized in mock mode');
+      this.client = null;
+      logger.info('WixEcommerceClient initialized in DEMO mode (mock data)');
+    } else {
+      this.client = client ?? createWixClient();
+      if (!this.client) {
+        logger.warn('Wix credentials missing - falling back to DEMO mode');
+        this.mockMode = true;
+      } else {
+        logger.info('WixEcommerceClient initialized in LIVE mode (real Wix APIs)');
+      }
     }
   }
 

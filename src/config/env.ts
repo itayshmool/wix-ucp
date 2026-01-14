@@ -8,13 +8,16 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.string().default('3000').transform(Number),
   
+  // Demo Mode - when true, uses mock data instead of real Wix APIs
+  DEMO_MODE: z.string().transform(val => val === 'true').default('true'),
+  
   // Database (PostgreSQL connection string)
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   
   // Redis (connection string)
   REDIS_URL: z.string().min(1, 'REDIS_URL is required'),
   
-  // Wix API (optional until you're ready to integrate)
+  // Wix API (required when DEMO_MODE=false)
   WIX_API_KEY: z.string().optional(),
   WIX_ACCOUNT_ID: z.string().optional(),
   WIX_SITE_ID: z.string().optional(),
