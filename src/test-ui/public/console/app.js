@@ -507,6 +507,7 @@ function setupEventListeners() {
     const selectedMode = elements.modeSelect.value;
     state.mode = selectedMode || null; // null = use server default
     saveState();
+    updateUrlWithMode(state.mode);
     console.log(`Mode changed to: ${state.mode || 'server default'}`);
   });
   
@@ -582,10 +583,40 @@ function setupEventListeners() {
 }
 
 // ============================================
+// URL Parameter Handling
+// ============================================
+function getModeFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get('mode');
+  if (mode === 'demo' || mode === 'live') {
+    return mode;
+  }
+  return null;
+}
+
+function updateUrlWithMode(mode) {
+  const url = new URL(window.location);
+  if (mode) {
+    url.searchParams.set('mode', mode);
+  } else {
+    url.searchParams.delete('mode');
+  }
+  window.history.replaceState({}, '', url);
+}
+
+// ============================================
 // Initialize
 // ============================================
 async function init() {
   loadState();
+  
+  // URL parameter takes precedence over saved state
+  const urlMode = getModeFromUrl();
+  if (urlMode) {
+    state.mode = urlMode;
+    saveState();
+  }
+  
   setupEventListeners();
   
   // Initialize session
@@ -595,10 +626,13 @@ async function init() {
     await initSession();
   }
   
-  // Restore mode selector from saved state
+  // Restore mode selector from state (which may have been set from URL)
   if (state.mode) {
     elements.modeSelect.value = state.mode;
   }
+  
+  // Sync URL with current mode
+  updateUrlWithMode(state.mode);
   
   // Render initial state
   updateToolDescription();

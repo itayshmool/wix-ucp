@@ -70,7 +70,7 @@ A **complete UCP integration layer** for Wix e-commerce that enables:
 | **Health Check** | https://wix-ucp-api.onrender.com/health |
 | **API Docs** | https://wix-ucp-api.onrender.com/docs |
 
-### Test UI (No Wix Credentials Needed!)
+### Test UI
 
 | Tool | URL | Use For |
 |------|-----|---------|
@@ -79,22 +79,52 @@ A **complete UCP integration layer** for Wix e-commerce that enables:
 
 ---
 
+## 🔄 Demo Mode vs Live Mode
+
+The Test UI supports **instant switching** between demo and live data:
+
+| Mode | Indicator | Data Source |
+|------|-----------|-------------|
+| **🟢 Live** | Green badge | Real Wix store data |
+| **🟡 Demo** | Yellow badge | Mock data (no Wix needed) |
+| **🔄 Server Default** | Gray badge | Uses DEMO_MODE env var |
+
+### Quick Test URLs
+
+| Scenario | URL | Description |
+|----------|-----|-------------|
+| **Console - Live Data** | [/test-ui/console?mode=live](https://wix-ucp-api.onrender.com/test-ui/console?mode=live) | 🟢 Real Wix store products |
+| **Console - Demo Data** | [/test-ui/console?mode=demo](https://wix-ucp-api.onrender.com/test-ui/console?mode=demo) | 🟡 Mock products (no Wix needed) |
+| **Wizard - Live Flow** | [/test-ui/wizard](https://wix-ucp-api.onrender.com/test-ui/wizard) | Server default checkout flow |
+| **Wizard - Demo Flow** | [/test-ui/wizard](https://wix-ucp-api.onrender.com/test-ui/wizard) | Server default checkout flow |
+
+---
+
 ## 🎮 How to Use: MCP Test Console
 
 **URL:** https://wix-ucp-api.onrender.com/test-ui/console
 
 ### Features:
-1. **Select any MCP tool** from the dropdown (16 tools available)
-2. **Edit JSON arguments** in the editor
-3. **Click Execute** to run the tool
-4. **View response** with syntax highlighting
-5. **Browse history** of all requests
+1. **Mode Toggle** - Switch between Live/Demo/Server Default instantly
+2. **Select any MCP tool** from the dropdown (16 tools available)
+3. **Edit JSON arguments** in the editor
+4. **Click Execute** to run the tool
+5. **View response** with syntax highlighting
+6. **Browse history** of all requests
 
-### Quick Start:
-1. Select `searchProducts` from dropdown
-2. Set arguments: `{"query": "headphones"}`
-3. Click **▶ Execute Tool**
-4. See mock product results!
+### Quick Start (Demo Mode):
+1. Select **"🟡 Demo (Mock Data)"** from Mode dropdown
+2. Select `searchProducts` from tool dropdown
+3. Set arguments: `{"query": "headphones"}`
+4. Click **▶ Execute Tool**
+5. See mock product results!
+
+### Quick Start (Live Mode):
+1. Select **"🟢 Live (Real Wix)"** from Mode dropdown
+2. Select `searchProducts` from tool dropdown
+3. Set arguments: `{"query": ""}`
+4. Click **▶ Execute Tool**
+5. See **real products** from your Wix store!
 
 ---
 
@@ -179,20 +209,29 @@ A **complete UCP integration layer** for Wix e-commerce that enables:
 ## 📈 Test Coverage
 
 ```
-✓ 493 tests passing
+✓ 493+ tests passing
 ✓ All modules covered
 ✓ Unit + Integration tests
-✓ Mock mode for isolated testing
+✓ Demo mode for isolated testing
+✓ Live mode for real Wix data
+✓ Per-request mode switching
 ```
 
 ---
 
+## ✅ Completed
+
+1. ✅ **Connected to real Wix store** - Live API credentials configured
+2. ✅ **Deployed to production** - Running on Render
+3. ✅ **Mode switching** - Demo/Live toggle in UI
+4. ✅ **Full test coverage** - 493+ tests passing
+
 ## 🚀 Next Steps
 
-1. **Connect to real Wix store** - Add Wix API credentials
-2. **Deploy for production** - Configure production environment
-3. **Integrate with AI agent** - Connect to Claude/GPT via MCP
-4. **Customize branding** - Update merchant profile
+1. **Integrate with AI agent** - Connect to Claude/GPT via MCP
+2. **Customize branding** - Update merchant profile
+3. **Add webhooks** - Real-time order notifications
+4. **Multi-store support** - Connect additional Wix stores
 
 ---
 
