@@ -518,6 +518,8 @@ export class WixEcommerceClient {
 
   /**
    * Search products
+   * Note: Wix Stores v1 REST API has limited filter support.
+   * We fetch products and do client-side filtering for text search.
    */
   async searchProducts(query: string = '', options: {
     limit?: number;
@@ -528,24 +530,26 @@ export class WixEcommerceClient {
       return this.mockSearchProducts(query, options);
     }
 
-    const { limit = 50, offset = 0 } = options;
+    const { limit = 50, offset = 0, collectionId } = options;
 
     try {
-      // Wix Stores V1 API uses a simpler query format
+      // Wix Stores V1 API - fetch products with basic paging
       // https://dev.wix.com/docs/rest/api-reference/wix-stores/catalog/products/query-products
       const requestBody: Record<string, unknown> = {
         query: {
-          paging: { limit, offset },
+          paging: { 
+            limit: query ? 100 : limit, // Fetch more for client-side filtering
+            offset: query ? 0 : offset 
+          },
         },
       };
 
-      // Only add filter if there's a search query
-      if (query && query.trim()) {
-        // Use $startsWith for product name search
+      // Add collection filter if specified (simple equality works)
+      if (collectionId) {
         requestBody.query = {
           ...requestBody.query as Record<string, unknown>,
           filter: {
-            name: { $startsWith: query },
+            'collections.id': collectionId,
           },
         };
       }
@@ -559,7 +563,30 @@ export class WixEcommerceClient {
 
       logger.info({ productCount: response.products?.length ?? 0 }, 'Wix Stores API response');
 
-      return response;
+      // Client-side filtering for text search (Wix v1 API doesn't support $contains on name)
+      let products = response.products || [];
+      if (query && query.trim()) {
+        const searchLower = query.toLowerCase();
+        products = products.filter(p => 
+          p.name?.toLowerCase().includes(searchLower) ||
+          p.description?.toLowerCase().includes(searchLower) ||
+          p.sku?.toLowerCase().includes(searchLower)
+        );
+      }
+
+      // Apply offset/limit for client-side filtered results
+      if (query && query.trim()) {
+        products = products.slice(offset, offset + limit);
+      }
+
+      return {
+        products,
+        metadata: {
+          count: products.length,
+          offset,
+          total: query ? products.length : (response.metadata?.total ?? products.length),
+        },
+      };
     } catch (error) {
       logger.error({ error, query, options }, 'Failed to search products in Wix');
       throw error;
