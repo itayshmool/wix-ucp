@@ -200,7 +200,7 @@ function hideLoading() {
 // Step 1: Search Products
 // ============================================
 async function searchProducts() {
-  const query = elements.searchInput.value.trim() || 'headphones';
+  const query = elements.searchInput.value.trim();
   
   showLoading('Searching products...');
   
