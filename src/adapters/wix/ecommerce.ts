@@ -528,27 +528,42 @@ export class WixEcommerceClient {
       return this.mockSearchProducts(query, options);
     }
 
-    const { limit = 50, offset = 0, collectionId } = options;
+    const { limit = 50, offset = 0 } = options;
 
-    // Build filter
-    const filter: Record<string, unknown> = {};
-    if (query) {
-      filter.name = { $contains: query };
-    }
-    if (collectionId) {
-      filter['collections.id'] = collectionId;
-    }
-
-    return this.client!.post<WixProductsQueryResponse>(
-      '/stores/v1/products/query',
-      {
+    try {
+      // Wix Stores V1 API uses a simpler query format
+      // https://dev.wix.com/docs/rest/api-reference/wix-stores/catalog/products/query-products
+      const requestBody: Record<string, unknown> = {
         query: {
-          filter,
           paging: { limit, offset },
-          sort: [{ fieldName: 'name', order: 'ASC' }],
         },
+      };
+
+      // Only add filter if there's a search query
+      if (query && query.trim()) {
+        // Use $startsWith for product name search
+        requestBody.query = {
+          ...requestBody.query as Record<string, unknown>,
+          filter: {
+            name: { $startsWith: query },
+          },
+        };
       }
-    );
+
+      logger.info({ endpoint: '/stores/v1/products/query', requestBody }, 'Calling Wix Stores API');
+
+      const response = await this.client!.post<WixProductsQueryResponse>(
+        '/stores/v1/products/query',
+        requestBody
+      );
+
+      logger.info({ productCount: response.products?.length ?? 0 }, 'Wix Stores API response');
+
+      return response;
+    } catch (error) {
+      logger.error({ error, query, options }, 'Failed to search products in Wix');
+      throw error;
+    }
   }
 
   /**
