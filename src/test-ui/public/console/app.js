@@ -23,7 +23,7 @@ const TOOL_DEFINITIONS = {
   // Products
   searchProducts: {
     description: 'Search for products in the catalog by query, category, price range, or other filters.',
-    defaultArgs: { query: 'headphones', limit: 5 },
+    defaultArgs: { query: '', limit: 5 },
     category: 'Products'
   },
   getProductDetails: {
