@@ -71,6 +71,8 @@ export interface MCPContext {
   locale?: string;
   /** Currency */
   currency?: string;
+  /** Force demo or live mode (overrides DEMO_MODE env var) */
+  forceMode?: 'demo' | 'live';
 }
 
 // ─────────────────────────────────────────────────────────────

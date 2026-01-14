@@ -42,7 +42,7 @@ function createErrorResult(message: string): MCPToolResult {
 
 const createVisitorSession: ToolHandler = async (args, context) => {
   const sessionManager = getSessionManager();
-  const client = getWixEcommerceClient();
+  const client = getWixEcommerceClient(context.forceMode);
 
   try {
     const session = await sessionManager.createVisitorSession();
@@ -75,7 +75,7 @@ const linkIdentity: ToolHandler = async (args, context) => {
   }
 
   const sessionManager = getSessionManager();
-  const client = getWixEcommerceClient();
+  const client = getWixEcommerceClient(context.forceMode);
 
   try {
     // In production (DEMO_MODE=false), this would:
@@ -114,7 +114,7 @@ const linkIdentity: ToolHandler = async (args, context) => {
 
 const getMemberInfo: ToolHandler = async (args, context) => {
   const sessionManager = getSessionManager();
-  const client = getWixEcommerceClient();
+  const client = getWixEcommerceClient(context.forceMode);
 
   // Check if session has member token
   if (!sessionManager.isMemberSession(context.session)) {

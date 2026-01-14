@@ -1199,14 +1199,47 @@ export function createWixEcommerceClient(
 }
 
 /**
- * Default client instance
+ * Cached client instances for different modes
  */
 let defaultClient: WixEcommerceClient | null = null;
+let demoModeClient: WixEcommerceClient | null = null;
+let liveModeClient: WixEcommerceClient | null = null;
 
 /**
- * Get default eCommerce client
+ * Get eCommerce client with optional mode override
+ * @param forceMode - If specified, overrides the DEMO_MODE env var
+ *   - 'demo': Always use mock data
+ *   - 'live': Always use real Wix API (will fail if credentials missing)
+ *   - undefined: Use DEMO_MODE env var (default behavior)
  */
-export function getWixEcommerceClient(): WixEcommerceClient {
+export function getWixEcommerceClient(forceMode?: 'demo' | 'live'): WixEcommerceClient {
+  // If no mode override, use default client (respects DEMO_MODE env var)
+  if (forceMode === undefined) {
+    if (!defaultClient) {
+      defaultClient = createWixEcommerceClient();
+    }
+    return defaultClient;
+  }
+
+  // Force demo mode
+  if (forceMode === 'demo') {
+    if (!demoModeClient) {
+      demoModeClient = createWixEcommerceClient({ mockMode: true });
+      logger.info('Created demo mode client (forced by URL parameter)');
+    }
+    return demoModeClient;
+  }
+
+  // Force live mode
+  if (forceMode === 'live') {
+    if (!liveModeClient) {
+      liveModeClient = createWixEcommerceClient({ mockMode: false });
+      logger.info('Created live mode client (forced by URL parameter)');
+    }
+    return liveModeClient;
+  }
+
+  // Fallback to default
   if (!defaultClient) {
     defaultClient = createWixEcommerceClient();
   }

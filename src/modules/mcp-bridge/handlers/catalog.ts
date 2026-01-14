@@ -62,13 +62,14 @@ function createErrorResult(message: string): MCPToolResult {
 // Handlers
 // ─────────────────────────────────────────────────────────────
 
-const searchProducts: ToolHandler = async (args) => {
+const searchProducts: ToolHandler = async (args, context) => {
   const query = (args.query as string | undefined) ?? '';
   const limit = (args.limit as number | undefined) ?? 10;
   const offset = (args.offset as number | undefined) ?? 0;
 
   try {
-    const client = getWixEcommerceClient();
+    // Use forceMode from context if provided (from URL parameter)
+    const client = getWixEcommerceClient(context.forceMode);
     const response = await client.searchProducts(query, { limit, offset });
 
     const products = response.products.map((p) => ({
@@ -102,7 +103,7 @@ const searchProducts: ToolHandler = async (args) => {
   }
 };
 
-const getProduct: ToolHandler = async (args) => {
+const getProduct: ToolHandler = async (args, context) => {
   const productId = args.productId as string | undefined;
 
   if (!productId) {
@@ -110,7 +111,8 @@ const getProduct: ToolHandler = async (args) => {
   }
 
   try {
-    const client = getWixEcommerceClient();
+    // Use forceMode from context if provided (from URL parameter)
+    const client = getWixEcommerceClient(context.forceMode);
     const product = await client.getProduct(productId);
 
     return createTextResult({
@@ -157,8 +159,9 @@ const getProduct: ToolHandler = async (args) => {
   }
 };
 
-const getBusinessProfile: ToolHandler = async () => {
-  const client = getWixEcommerceClient();
+const getBusinessProfile: ToolHandler = async (_args, context) => {
+  // Use forceMode from context if provided (from URL parameter)
+  const client = getWixEcommerceClient(context.forceMode);
   const isDemo = client.isInMockMode();
 
   return createTextResult({
@@ -200,7 +203,7 @@ const getBusinessProfile: ToolHandler = async () => {
       shipping: 'Standard and express options available',
     },
     message: isDemo
-      ? 'Running in DEMO mode - using mock data. Set DEMO_MODE=false with Wix credentials for live data.'
+      ? 'Running in DEMO mode - using mock data. Use mode selector in Test UI or set DEMO_MODE=false for live data.'
       : 'Running in LIVE mode - connected to real Wix store',
     availableTools: [
       'searchProducts - Search for products',

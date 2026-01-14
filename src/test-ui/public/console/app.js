@@ -169,7 +169,8 @@ const QUICK_EXAMPLES = {
 let state = {
   sessionId: null,
   history: [],
-  lastResponse: null
+  lastResponse: null,
+  mode: null // 'demo', 'live', or null (use server default)
 };
 
 // ============================================
@@ -179,6 +180,7 @@ const elements = {
   sessionId: document.getElementById('sessionId'),
   newSessionBtn: document.getElementById('newSessionBtn'),
   clearBtn: document.getElementById('clearBtn'),
+  modeSelect: document.getElementById('modeSelect'),
   toolSelect: document.getElementById('toolSelect'),
   toolDescription: document.getElementById('toolDescription'),
   argsInput: document.getElementById('argsInput'),
@@ -248,16 +250,23 @@ async function executeTool() {
   
   try {
     // Try test UI API endpoint first
+    const requestBody = {
+      tool: toolName,
+      arguments: args
+    };
+    
+    // Include mode if explicitly set (not null/server default)
+    if (state.mode) {
+      requestBody.mode = state.mode;
+    }
+    
     const response = await fetch(`${TEST_API_ENDPOINT}/call`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Session-Id': state.sessionId || ''
       },
-      body: JSON.stringify({
-        tool: toolName,
-        arguments: args
-      })
+      body: JSON.stringify(requestBody)
     });
     
     const endTime = performance.now();
@@ -461,7 +470,8 @@ function saveState() {
   try {
     localStorage.setItem('ucpConsoleState', JSON.stringify({
       sessionId: state.sessionId,
-      history: state.history.slice(0, 10) // Only save last 10
+      history: state.history.slice(0, 10), // Only save last 10
+      mode: state.mode
     }));
   } catch (e) {
     console.warn('Could not save state:', e);
@@ -475,6 +485,7 @@ function loadState() {
       const parsed = JSON.parse(saved);
       state.sessionId = parsed.sessionId;
       state.history = parsed.history || [];
+      state.mode = parsed.mode || null;
     }
   } catch (e) {
     console.warn('Could not load state:', e);
@@ -490,6 +501,14 @@ function setupEventListeners() {
   
   // Tool selection change
   elements.toolSelect.addEventListener('change', updateToolDescription);
+  
+  // Mode toggle
+  elements.modeSelect.addEventListener('change', () => {
+    const selectedMode = elements.modeSelect.value;
+    state.mode = selectedMode || null; // null = use server default
+    saveState();
+    console.log(`Mode changed to: ${state.mode || 'server default'}`);
+  });
   
   // New session
   elements.newSessionBtn.addEventListener('click', () => {
@@ -576,11 +595,17 @@ async function init() {
     await initSession();
   }
   
+  // Restore mode selector from saved state
+  if (state.mode) {
+    elements.modeSelect.value = state.mode;
+  }
+  
   // Render initial state
   updateToolDescription();
   renderHistory();
   
   console.log('🧪 Wix UCP Test Console initialized');
+  console.log('Current mode:', state.mode || 'server default');
   console.log('Keyboard shortcuts:');
   console.log('  Ctrl/Cmd + Enter: Execute tool');
   console.log('  Ctrl/Cmd + Shift + F: Format JSON');

@@ -51,7 +51,7 @@ function createErrorResult(message: string): MCPToolResult {
 // Handlers
 // ─────────────────────────────────────────────────────────────
 
-const createCheckout: ToolHandler = async (args) => {
+const createCheckout: ToolHandler = async (args, context) => {
   const lineItems = args.lineItems as
     | Array<{ productId: string; variantId?: string; quantity: number }>
     | undefined;
@@ -63,7 +63,7 @@ const createCheckout: ToolHandler = async (args) => {
   }
 
   const checkoutService = createCheckoutService();
-  const client = getWixEcommerceClient();
+  const client = getWixEcommerceClient(context.forceMode);
 
   try {
     const checkout = await checkoutService.createCheckout({
@@ -96,7 +96,7 @@ const createCheckout: ToolHandler = async (args) => {
   }
 };
 
-const getCheckout: ToolHandler = async (args) => {
+const getCheckout: ToolHandler = async (args, context) => {
   const checkoutId = args.checkoutId as string | undefined;
 
   if (!checkoutId) {
@@ -104,7 +104,7 @@ const getCheckout: ToolHandler = async (args) => {
   }
 
   const checkoutService = createCheckoutService();
-  const client = getWixEcommerceClient();
+  const client = getWixEcommerceClient(context.forceMode);
 
   try {
     const checkout = await checkoutService.getCheckout(checkoutId);
@@ -132,7 +132,7 @@ const getCheckout: ToolHandler = async (args) => {
   }
 };
 
-const updateCheckout: ToolHandler = async (args) => {
+const updateCheckout: ToolHandler = async (args, context) => {
   const checkoutId = args.checkoutId as string | undefined;
   const buyerEmail = args.buyerEmail as string | undefined;
   const buyerName = args.buyerName as string | undefined;
@@ -153,7 +153,7 @@ const updateCheckout: ToolHandler = async (args) => {
   }
 
   const checkoutService = createCheckoutService();
-  const client = getWixEcommerceClient();
+  const client = getWixEcommerceClient(context.forceMode);
 
   try {
     // Parse name if provided
@@ -198,9 +198,9 @@ const updateCheckout: ToolHandler = async (args) => {
   }
 };
 
-const getPaymentHandlers: ToolHandler = async (args) => {
+const getPaymentHandlers: ToolHandler = async (args, context) => {
   const checkoutId = args.checkoutId as string | undefined;
-  const client = getWixEcommerceClient();
+  const client = getWixEcommerceClient(context.forceMode);
 
   return createTextResult({
     checkoutId,
@@ -219,7 +219,7 @@ const getPaymentHandlers: ToolHandler = async (args) => {
   });
 };
 
-const getShippingOptions: ToolHandler = async (args) => {
+const getShippingOptions: ToolHandler = async (args, context) => {
   const checkoutId = args.checkoutId as string | undefined;
 
   if (!checkoutId) {
@@ -227,7 +227,7 @@ const getShippingOptions: ToolHandler = async (args) => {
   }
 
   const checkoutService = createCheckoutService();
-  const client = getWixEcommerceClient();
+  const client = getWixEcommerceClient(context.forceMode);
 
   try {
     const options = await checkoutService.getFulfillmentOptions(checkoutId);
@@ -256,7 +256,7 @@ const getShippingOptions: ToolHandler = async (args) => {
   }
 };
 
-const completeCheckout: ToolHandler = async (args) => {
+const completeCheckout: ToolHandler = async (args, context) => {
   const checkoutId = args.checkoutId as string | undefined;
   const paymentToken = args.paymentToken as string | undefined;
   const handlerId = args.handlerId as string | undefined;
@@ -266,7 +266,7 @@ const completeCheckout: ToolHandler = async (args) => {
   }
 
   const checkoutService = createCheckoutService();
-  const client = getWixEcommerceClient();
+  const client = getWixEcommerceClient(context.forceMode);
 
   try {
     const result = await checkoutService.completeCheckout(checkoutId, {
@@ -295,14 +295,14 @@ const completeCheckout: ToolHandler = async (args) => {
   }
 };
 
-const getEmbeddedCheckoutUrl: ToolHandler = async (args) => {
+const getEmbeddedCheckoutUrl: ToolHandler = async (args, context) => {
   const { checkoutId } = args as { checkoutId: string };
 
   if (!checkoutId) {
     return createErrorResult('checkoutId is required');
   }
 
-  const client = getWixEcommerceClient();
+  const client = getWixEcommerceClient(context.forceMode);
 
   return createTextResult({
     checkoutId,

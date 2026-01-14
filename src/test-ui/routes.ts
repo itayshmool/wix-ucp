@@ -68,6 +68,8 @@ async function serveStaticFile(
 interface MCPCallRequest {
   tool: string;
   arguments: Record<string, unknown>;
+  /** Force demo or live mode (overrides DEMO_MODE env var) */
+  mode?: 'demo' | 'live';
 }
 
 interface MCPCallResponse {
@@ -92,10 +94,14 @@ const ALL_HANDLERS: Record<string, ToolHandler> = {
 
 /**
  * Execute an MCP tool using the real handlers
+ * @param tool - Tool name
+ * @param args - Tool arguments
+ * @param forceMode - Optional mode override ('demo' | 'live')
  */
 async function executeMCPTool(
   tool: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  forceMode?: 'demo' | 'live'
 ): Promise<MCPCallResponse> {
   const handler = ALL_HANDLERS[tool];
 
@@ -120,6 +126,7 @@ async function executeMCPTool(
       siteId: 'test-ui',
       locale: 'en-US',
       currency: 'USD',
+      forceMode, // Pass mode override to handlers
     };
 
     const result = await handler(args, context);
@@ -201,9 +208,9 @@ export function testUIRoutes(
   fastify.post<{
     Body: MCPCallRequest;
   }>('/test-ui/api/call', async (request, reply) => {
-    const { tool, arguments: args } = request.body;
+    const { tool, arguments: args, mode } = request.body;
 
-    logger.info({ tool, args }, 'MCP tool call received');
+    logger.info({ tool, args, mode }, 'MCP tool call received');
 
     if (!tool) {
       return reply.status(400).send({
@@ -212,7 +219,7 @@ export function testUIRoutes(
       });
     }
 
-    const result = await executeMCPTool(tool, args || {});
+    const result = await executeMCPTool(tool, args || {}, mode);
 
     if (result.success) {
       return reply.status(200).send(result);

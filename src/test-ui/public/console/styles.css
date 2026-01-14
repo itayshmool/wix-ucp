@@ -154,6 +154,49 @@ body {
   font-size: 0.875rem;
 }
 
+/* Mode Toggle */
+.mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+}
+
+.mode-label {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.mode-select {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--space-xs) var(--space-sm);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.mode-select:hover {
+  border-color: var(--accent-dim);
+}
+
+.mode-select:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.mode-select option {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
 .session-id {
   font-family: var(--font-mono);
   font-size: 0.75rem;

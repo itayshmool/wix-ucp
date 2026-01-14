@@ -21,6 +21,15 @@
         <span class="version-badge">v2026-01-11</span>
       </div>
       <div class="header-right">
+        <!-- Mode Toggle -->
+        <div class="mode-toggle">
+          <span class="mode-label">Mode:</span>
+          <select id="modeSelect" class="mode-select">
+            <option value="">🔄 Server Default</option>
+            <option value="live">🟢 Live (Real Wix)</option>
+            <option value="demo">🟡 Demo (Mock Data)</option>
+          </select>
+        </div>
         <div class="session-info">
           <span class="session-label">Session:</span>
           <code class="session-id" id="sessionId">Not connected</code>

@@ -47,7 +47,7 @@ function createErrorResult(message: string): MCPToolResult {
 // Handlers
 // ─────────────────────────────────────────────────────────────
 
-const getOrder: ToolHandler = async (args) => {
+const getOrder: ToolHandler = async (args, context) => {
   const orderId = args.orderId as string | undefined;
 
   if (!orderId) {
@@ -56,7 +56,7 @@ const getOrder: ToolHandler = async (args) => {
 
   try {
     const orderService = createOrderService();
-    const client = getWixEcommerceClient();
+    const client = getWixEcommerceClient(context.forceMode);
     const order = await orderService.getOrder(orderId);
 
     const total = order.totals.find((t) => t.type === 'TOTAL');
@@ -84,13 +84,13 @@ const getOrder: ToolHandler = async (args) => {
   }
 };
 
-const listOrders: ToolHandler = async (args) => {
+const listOrders: ToolHandler = async (args, context) => {
   const limit = (args.limit as number | undefined) ?? 10;
   const status = args.status as 'pending' | 'shipped' | 'delivered' | 'cancelled' | undefined;
 
   try {
     const orderService = createOrderService();
-    const client = getWixEcommerceClient();
+    const client = getWixEcommerceClient(context.forceMode);
     
     // listOrders requires memberId - use 'visitor' for anonymous sessions
     // status is already in the correct format (lowercase)
@@ -118,7 +118,7 @@ const listOrders: ToolHandler = async (args) => {
   }
 };
 
-const getOrderTracking: ToolHandler = async (args) => {
+const getOrderTracking: ToolHandler = async (args, context) => {
   const orderId = args.orderId as string | undefined;
 
   if (!orderId) {
@@ -127,7 +127,7 @@ const getOrderTracking: ToolHandler = async (args) => {
 
   try {
     const orderService = createOrderService();
-    const client = getWixEcommerceClient();
+    const client = getWixEcommerceClient(context.forceMode);
     const tracking = await orderService.getTracking(orderId);
 
     if (tracking.shipments.length === 0) {
