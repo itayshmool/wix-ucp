@@ -9,6 +9,7 @@ import { logger } from '../../lib/logger.js';
 import { UCPException } from '../../core/types/errors.js';
 import type { LineItem, Buyer, Address, Total } from '../../core/types/ucp-common.js';
 import type { PaymentHandler } from '../../core/types/payment.js';
+import { getWixEcommerceClient } from '../../adapters/wix/ecommerce.js';
 import type {
   CreateCheckoutPayload,
   UpdateCheckoutPayload,
@@ -330,6 +331,7 @@ export class CheckoutService {
 
   /**
    * Get available fulfillment options
+   * Uses WixEcommerceClient which respects DEMO_MODE for mock vs real APIs.
    */
   async getFulfillmentOptions(
     checkoutId: string,
@@ -346,36 +348,62 @@ export class CheckoutService {
       return []; // No shipping needed for digital-only
     }
 
-    // Mock fulfillment options (would integrate with Wix Shipping API)
-    return [
-      {
-        id: 'standard_shipping',
-        type: 'shipping',
-        title: 'Standard Shipping',
-        description: '5-7 business days',
-        price: 599, // $5.99
-        estimatedDelivery: { minDays: 5, maxDays: 7 },
-        carrier: 'USPS',
-      },
-      {
-        id: 'express_shipping',
-        type: 'shipping',
-        title: 'Express Shipping',
-        description: '2-3 business days',
-        price: 1299, // $12.99
-        estimatedDelivery: { minDays: 2, maxDays: 3 },
-        carrier: 'FedEx',
-      },
-      {
-        id: 'overnight_shipping',
-        type: 'shipping',
-        title: 'Overnight Shipping',
-        description: 'Next business day',
-        price: 2499, // $24.99
-        estimatedDelivery: { minDays: 1, maxDays: 1 },
-        carrier: 'FedEx',
-      },
-    ];
+    try {
+      // Use WixEcommerceClient to get shipping rates (respects DEMO_MODE)
+      const client = getWixEcommerceClient();
+      const response = await client.getShippingRates(checkoutId);
+
+      return response.shippingRates.map((rate) => {
+        // Parse delivery time to estimate min/max days
+        const deliveryTime = rate.logistics.deliveryTime ?? '';
+        let minDays = 5;
+        let maxDays = 7;
+        
+        if (deliveryTime.includes('Next')) {
+          minDays = 1;
+          maxDays = 1;
+        } else if (deliveryTime.includes('2-3')) {
+          minDays = 2;
+          maxDays = 3;
+        } else if (deliveryTime.includes('5-7')) {
+          minDays = 5;
+          maxDays = 7;
+        }
+
+        return {
+          id: `${rate.carrierId}_${rate.code}`,
+          type: 'shipping' as const,
+          title: rate.title,
+          description: rate.logistics.deliveryTime ?? '',
+          price: Math.round(parseFloat(rate.cost.price) * 100), // Convert to cents
+          estimatedDelivery: { minDays, maxDays },
+          carrier: rate.carrierName,
+        };
+      });
+    } catch (error) {
+      logger.warn({ error, checkoutId }, 'Failed to get shipping rates from Wix, using fallback');
+      // Fallback to default options
+      return [
+        {
+          id: 'standard_shipping',
+          type: 'shipping',
+          title: 'Standard Shipping',
+          description: '5-7 business days',
+          price: 599,
+          estimatedDelivery: { minDays: 5, maxDays: 7 },
+          carrier: 'USPS',
+        },
+        {
+          id: 'express_shipping',
+          type: 'shipping',
+          title: 'Express Shipping',
+          description: '2-3 business days',
+          price: 1299,
+          estimatedDelivery: { minDays: 2, maxDays: 3 },
+          carrier: 'FedEx',
+        },
+      ];
+    }
   }
 
   /**

@@ -313,3 +313,159 @@ export interface WixFulfillment {
   };
   createdDate: string;
 }
+
+// ─────────────────────────────────────────────────────────────
+// Wix Stores/Catalog Types
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Wix product media item
+ */
+export interface WixMediaItem {
+  id: string;
+  url: string;
+  width?: number;
+  height?: number;
+  altText?: string;
+  mediaType: 'IMAGE' | 'VIDEO';
+}
+
+/**
+ * Wix product price data
+ */
+export interface WixPriceData {
+  currency: string;
+  price: number;
+  discountedPrice?: number;
+  formatted: {
+    price: string;
+    discountedPrice?: string;
+  };
+}
+
+/**
+ * Wix product variant
+ */
+export interface WixProductVariant {
+  id: string;
+  choices: Record<string, string>;
+  variant: {
+    priceData: WixPriceData;
+    sku?: string;
+    visible: boolean;
+    inStock: boolean;
+    weight?: number;
+  };
+}
+
+/**
+ * Wix product option
+ */
+export interface WixProductOption {
+  name: string;
+  optionType: 'DROP_DOWN' | 'COLOR';
+  choices: Array<{
+    value: string;
+    description?: string;
+    inStock: boolean;
+    visible: boolean;
+  }>;
+}
+
+/**
+ * Wix product
+ */
+export interface WixProduct {
+  id: string;
+  name: string;
+  slug: string;
+  visible: boolean;
+  productType: 'physical' | 'digital';
+  description?: string;
+  sku?: string;
+  weight?: number;
+  stock: {
+    inStock: boolean;
+    quantity?: number;
+    trackInventory: boolean;
+  };
+  priceData: WixPriceData;
+  media: {
+    mainMedia?: WixMediaItem;
+    items: WixMediaItem[];
+  };
+  productOptions: WixProductOption[];
+  variants: WixProductVariant[];
+  collections?: Array<{
+    id: string;
+    name: string;
+  }>;
+  brand?: string;
+  ribbon?: string;
+  createdDate: string;
+  lastUpdated: string;
+}
+
+/**
+ * Wix products query response
+ */
+export interface WixProductsQueryResponse {
+  products: WixProduct[];
+  metadata: {
+    count: number;
+    offset: number;
+    total: number;
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Wix Members Types
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Wix member address
+ */
+export interface WixMemberAddress {
+  id: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  subdivision?: string;
+  country?: string;
+  postalCode?: string;
+}
+
+/**
+ * Wix member
+ */
+export interface WixMember {
+  id: string;
+  loginEmail?: string;
+  status: 'PENDING' | 'APPROVED' | 'OFFLINE' | 'BLOCKED' | 'UNKNOWN';
+  contact: {
+    firstName?: string;
+    lastName?: string;
+    phones?: string[];
+    emails?: string[];
+    addresses?: WixMemberAddress[];
+    birthdate?: string;
+    company?: string;
+    jobTitle?: string;
+  };
+  profile: {
+    nickname?: string;
+    slug?: string;
+    photo?: {
+      url: string;
+    };
+    cover?: {
+      url: string;
+    };
+    title?: string;
+  };
+  privacyStatus: 'PUBLIC' | 'PRIVATE' | 'UNKNOWN';
+  activityStatus: 'ACTIVE' | 'UNKNOWN';
+  createdDate: string;
+  updatedDate: string;
+  lastLoginDate?: string;
+}

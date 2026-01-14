@@ -2,11 +2,13 @@
  * Checkout Tool Handlers
  * 
  * MCP handlers for checkout operations.
+ * Uses CheckoutService which respects DEMO_MODE for mock vs real APIs.
  */
 
 import { createCheckoutService } from '../../checkout/service.js';
+import { getWixEcommerceClient } from '../../../adapters/wix/ecommerce.js';
 import { env } from '../../../config/env.js';
-import type { MCPContext, MCPToolResult, ToolHandler } from '../types.js';
+import type { MCPToolResult, ToolHandler } from '../types.js';
 import { WIX_STORES_APP_ID } from '../types.js';
 
 const UCP_BASE_URL = env.UCP_BASE_URL ?? 'http://localhost:3000';
@@ -49,8 +51,10 @@ function createErrorResult(message: string): MCPToolResult {
 // Handlers
 // ─────────────────────────────────────────────────────────────
 
-const createCheckout: ToolHandler = async (args, context) => {
-  const lineItems = args.lineItems as Array<{ productId: string; variantId?: string; quantity: number }> | undefined;
+const createCheckout: ToolHandler = async (args) => {
+  const lineItems = args.lineItems as
+    | Array<{ productId: string; variantId?: string; quantity: number }>
+    | undefined;
   const currency = (args.currency as string) ?? 'USD';
   const buyerEmail = args.buyerEmail as string | undefined;
 
@@ -59,12 +63,13 @@ const createCheckout: ToolHandler = async (args, context) => {
   }
 
   const checkoutService = createCheckoutService();
+  const client = getWixEcommerceClient();
 
   try {
     const checkout = await checkoutService.createCheckout({
       currency,
       buyer: buyerEmail ? { email: buyerEmail } : undefined,
-      lineItems: lineItems.map(item => ({
+      lineItems: lineItems.map((item) => ({
         catalogReference: {
           catalogItemId: item.productId,
           appId: WIX_STORES_APP_ID,
@@ -74,7 +79,7 @@ const createCheckout: ToolHandler = async (args, context) => {
       })),
     });
 
-    const total = checkout.totals.find(t => t.type === 'TOTAL');
+    const total = checkout.totals.find((t) => t.type === 'TOTAL');
 
     return createTextResult({
       checkoutId: checkout.id,
@@ -82,17 +87,16 @@ const createCheckout: ToolHandler = async (args, context) => {
       total: total ? formatPrice(total.amount, checkout.currency) : undefined,
       currency: checkout.currency,
       itemCount: checkout.lineItems.length,
+      mode: client.isInMockMode() ? 'demo' : 'live',
       message: `Checkout created successfully. ${getStatusMessage(checkout.status)}`,
       nextSteps: getNextSteps(checkout.status),
     });
   } catch (error) {
-    return createErrorResult(
-      error instanceof Error ? error.message : 'Failed to create checkout'
-    );
+    return createErrorResult(error instanceof Error ? error.message : 'Failed to create checkout');
   }
 };
 
-const getCheckout: ToolHandler = async (args, context) => {
+const getCheckout: ToolHandler = async (args) => {
   const checkoutId = args.checkoutId as string | undefined;
 
   if (!checkoutId) {
@@ -100,17 +104,18 @@ const getCheckout: ToolHandler = async (args, context) => {
   }
 
   const checkoutService = createCheckoutService();
+  const client = getWixEcommerceClient();
 
   try {
     const checkout = await checkoutService.getCheckout(checkoutId);
-    const total = checkout.totals.find(t => t.type === 'TOTAL');
+    const total = checkout.totals.find((t) => t.type === 'TOTAL');
 
     return createTextResult({
       checkoutId: checkout.id,
       status: checkout.status,
       total: total ? formatPrice(total.amount, checkout.currency) : undefined,
       currency: checkout.currency,
-      items: checkout.lineItems.map(li => ({
+      items: checkout.lineItems.map((li) => ({
         id: li.id,
         name: li.item.title,
         quantity: li.quantity,
@@ -118,28 +123,29 @@ const getCheckout: ToolHandler = async (args, context) => {
       })),
       buyer: checkout.buyer,
       messages: checkout.messages,
+      mode: client.isInMockMode() ? 'demo' : 'live',
       statusMessage: getStatusMessage(checkout.status),
       nextSteps: getNextSteps(checkout.status),
     });
   } catch (error) {
-    return createErrorResult(
-      error instanceof Error ? error.message : 'Checkout not found'
-    );
+    return createErrorResult(error instanceof Error ? error.message : 'Checkout not found');
   }
 };
 
-const updateCheckout: ToolHandler = async (args, context) => {
+const updateCheckout: ToolHandler = async (args) => {
   const checkoutId = args.checkoutId as string | undefined;
   const buyerEmail = args.buyerEmail as string | undefined;
   const buyerName = args.buyerName as string | undefined;
-  const shippingAddress = args.shippingAddress as {
-    line1: string;
-    line2?: string;
-    city: string;
-    state?: string;
-    postalCode: string;
-    country: string;
-  } | undefined;
+  const shippingAddress = args.shippingAddress as
+    | {
+        line1: string;
+        line2?: string;
+        city: string;
+        state?: string;
+        postalCode: string;
+        country: string;
+      }
+    | undefined;
   const selectedFulfillmentId = args.selectedFulfillmentId as string | undefined;
 
   if (!checkoutId) {
@@ -147,6 +153,7 @@ const updateCheckout: ToolHandler = async (args, context) => {
   }
 
   const checkoutService = createCheckoutService();
+  const client = getWixEcommerceClient();
 
   try {
     // Parse name if provided
@@ -162,38 +169,39 @@ const updateCheckout: ToolHandler = async (args, context) => {
 
     const checkout = await checkoutService.updateCheckout(checkoutId, {
       buyer,
-      shippingAddress: shippingAddress ? {
-        line1: shippingAddress.line1,
-        line2: shippingAddress.line2,
-        city: shippingAddress.city,
-        state: shippingAddress.state,
-        postalCode: shippingAddress.postalCode,
-        country: shippingAddress.country,
-      } : undefined,
+      shippingAddress: shippingAddress
+        ? {
+            line1: shippingAddress.line1,
+            line2: shippingAddress.line2,
+            city: shippingAddress.city,
+            state: shippingAddress.state,
+            postalCode: shippingAddress.postalCode,
+            country: shippingAddress.country,
+          }
+        : undefined,
       selectedFulfillment: selectedFulfillmentId,
     });
 
-    const total = checkout.totals.find(t => t.type === 'TOTAL');
+    const total = checkout.totals.find((t) => t.type === 'TOTAL');
 
     return createTextResult({
       checkoutId: checkout.id,
       status: checkout.status,
       total: total ? formatPrice(total.amount, checkout.currency) : undefined,
+      mode: client.isInMockMode() ? 'demo' : 'live',
       message: 'Checkout updated successfully',
       statusMessage: getStatusMessage(checkout.status),
       nextSteps: getNextSteps(checkout.status),
     });
   } catch (error) {
-    return createErrorResult(
-      error instanceof Error ? error.message : 'Failed to update checkout'
-    );
+    return createErrorResult(error instanceof Error ? error.message : 'Failed to update checkout');
   }
 };
 
-const getPaymentHandlers: ToolHandler = async (args, context) => {
+const getPaymentHandlers: ToolHandler = async (args) => {
   const checkoutId = args.checkoutId as string | undefined;
+  const client = getWixEcommerceClient();
 
-  // Return mock payment handlers
   return createTextResult({
     checkoutId,
     handlers: [
@@ -205,11 +213,50 @@ const getPaymentHandlers: ToolHandler = async (args, context) => {
         tokenizeUrl: `${UCP_BASE_URL}/payment-handler/tokenize`,
       },
     ],
-    message: 'Payment handlers available. Use tokenize endpoint with card details to get payment token.',
+    mode: client.isInMockMode() ? 'demo' : 'live',
+    message:
+      'Payment handlers available. Use tokenize endpoint with card details to get payment token.',
   });
 };
 
-const completeCheckout: ToolHandler = async (args, context) => {
+const getShippingOptions: ToolHandler = async (args) => {
+  const checkoutId = args.checkoutId as string | undefined;
+
+  if (!checkoutId) {
+    return createErrorResult('checkoutId is required');
+  }
+
+  const checkoutService = createCheckoutService();
+  const client = getWixEcommerceClient();
+
+  try {
+    const options = await checkoutService.getFulfillmentOptions(checkoutId);
+
+    return createTextResult({
+      checkoutId,
+      shippingOptions: options.map((opt) => ({
+        id: opt.id,
+        title: opt.title,
+        description: opt.description,
+        price: formatPrice(opt.price, 'USD'),
+        priceRaw: opt.price,
+        carrier: opt.carrier,
+        estimatedDelivery: opt.estimatedDelivery,
+      })),
+      mode: client.isInMockMode() ? 'demo' : 'live',
+      message:
+        options.length > 0
+          ? `Found ${options.length} shipping option(s). Use updateCheckout with selectedFulfillmentId to select one.`
+          : 'No shipping options available (digital products only or address required)',
+    });
+  } catch (error) {
+    return createErrorResult(
+      error instanceof Error ? error.message : 'Failed to get shipping options'
+    );
+  }
+};
+
+const completeCheckout: ToolHandler = async (args) => {
   const checkoutId = args.checkoutId as string | undefined;
   const paymentToken = args.paymentToken as string | undefined;
   const handlerId = args.handlerId as string | undefined;
@@ -219,6 +266,7 @@ const completeCheckout: ToolHandler = async (args, context) => {
   }
 
   const checkoutService = createCheckoutService();
+  const client = getWixEcommerceClient();
 
   try {
     const result = await checkoutService.completeCheckout(checkoutId, {
@@ -238,28 +286,29 @@ const completeCheckout: ToolHandler = async (args, context) => {
       orderId: result.orderId,
       confirmationNumber: result.confirmationNumber,
       status: 'completed',
+      mode: client.isInMockMode() ? 'demo' : 'live',
       message: `Order completed successfully! Confirmation number: ${result.confirmationNumber}`,
       orderUrl: `${UCP_BASE_URL}/ucp/v1/orders/${result.orderId}`,
     });
   } catch (error) {
-    return createErrorResult(
-      error instanceof Error ? error.message : 'Failed to complete checkout'
-    );
+    return createErrorResult(error instanceof Error ? error.message : 'Failed to complete checkout');
   }
 };
 
-const getEmbeddedCheckoutUrl: ToolHandler = async (args, context) => {
+const getEmbeddedCheckoutUrl: ToolHandler = async (args) => {
   const { checkoutId } = args as { checkoutId: string };
 
   if (!checkoutId) {
     return createErrorResult('checkoutId is required');
   }
 
-  // Return mock embedded checkout URL
+  const client = getWixEcommerceClient();
+
   return createTextResult({
     checkoutId,
     embeddedUrl: `${UCP_BASE_URL}/checkout/embed/${checkoutId}`,
     expiresIn: 3600,
+    mode: client.isInMockMode() ? 'demo' : 'live',
     message: 'Use this URL to embed checkout in your interface',
   });
 };
@@ -315,6 +364,7 @@ export const checkoutHandlers: Record<string, ToolHandler> = {
   getCheckout,
   updateCheckout,
   getPaymentHandlers,
+  getShippingOptions,
   completeCheckout,
   getEmbeddedCheckoutUrl,
 };

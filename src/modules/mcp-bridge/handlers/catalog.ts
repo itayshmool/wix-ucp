@@ -2,19 +2,37 @@
  * Catalog Tool Handlers
  * 
  * MCP handlers for catalog/product operations.
+ * Uses WixEcommerceClient which respects DEMO_MODE for mock vs real APIs.
  */
 
-import type { MCPContext, MCPToolResult, ToolHandler } from '../types.js';
+import type { MCPToolResult, ToolHandler } from '../types.js';
+import { getWixEcommerceClient } from '../../../adapters/wix/ecommerce.js';
+import type { WixProduct } from '../../../adapters/wix/types.js';
 
 // ─────────────────────────────────────────────────────────────
 // Helper Functions
 // ─────────────────────────────────────────────────────────────
 
-function formatPrice(amount: number, currency: string): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-  }).format(amount / 100);
+function formatPrice(priceData: WixProduct['priceData']): string {
+  if (priceData.discountedPrice !== undefined) {
+    return `${priceData.formatted.discountedPrice} (was ${priceData.formatted.price})`;
+  }
+  return priceData.formatted.price;
+}
+
+function formatPriceRaw(priceData: WixProduct['priceData']): {
+  amount: number;
+  currency: string;
+  discountedAmount?: number;
+} {
+  const result: { amount: number; currency: string; discountedAmount?: number } = {
+    amount: Math.round(priceData.price * 100), // Convert to cents
+    currency: priceData.currency,
+  };
+  if (priceData.discountedPrice !== undefined) {
+    result.discountedAmount = Math.round(priceData.discountedPrice * 100);
+  }
+  return result;
 }
 
 function createTextResult(data: unknown): MCPToolResult {
@@ -41,201 +59,118 @@ function createErrorResult(message: string): MCPToolResult {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Mock Product Data
-// ─────────────────────────────────────────────────────────────
-
-const MOCK_PRODUCTS = [
-  {
-    id: 'prod_001',
-    name: 'Premium Wireless Headphones',
-    description: 'High-quality wireless headphones with noise cancellation',
-    price: 14999,
-    currency: 'USD',
-    category: 'Electronics',
-    inStock: true,
-    stockQuantity: 50,
-    imageUrl: 'https://example.com/headphones.jpg',
-    variants: [],
-  },
-  {
-    id: 'prod_002',
-    name: 'Organic Cotton T-Shirt',
-    description: 'Soft, sustainable organic cotton t-shirt',
-    price: 2999,
-    currency: 'USD',
-    category: 'Apparel',
-    inStock: true,
-    stockQuantity: 100,
-    imageUrl: 'https://example.com/tshirt.jpg',
-    variants: [
-      { id: 'var_s', name: 'Small' },
-      { id: 'var_m', name: 'Medium' },
-      { id: 'var_l', name: 'Large' },
-    ],
-  },
-  {
-    id: 'prod_003',
-    name: 'Stainless Steel Water Bottle',
-    description: 'Eco-friendly 32oz insulated water bottle',
-    price: 2499,
-    currency: 'USD',
-    category: 'Home & Kitchen',
-    inStock: true,
-    stockQuantity: 75,
-    imageUrl: 'https://example.com/bottle.jpg',
-    variants: [],
-  },
-  {
-    id: 'prod_004',
-    name: 'Yoga Mat Pro',
-    description: 'Non-slip professional yoga mat with carrying strap',
-    price: 4999,
-    currency: 'USD',
-    category: 'Sports',
-    inStock: false,
-    stockQuantity: 0,
-    imageUrl: 'https://example.com/yogamat.jpg',
-    variants: [],
-  },
-  {
-    id: 'prod_005',
-    name: 'Leather Wallet',
-    description: 'Genuine leather bifold wallet with RFID protection',
-    price: 5999,
-    currency: 'USD',
-    category: 'Accessories',
-    inStock: true,
-    stockQuantity: 30,
-    imageUrl: 'https://example.com/wallet.jpg',
-    variants: [
-      { id: 'var_black', name: 'Black' },
-      { id: 'var_brown', name: 'Brown' },
-    ],
-  },
-];
-
-// ─────────────────────────────────────────────────────────────
 // Handlers
 // ─────────────────────────────────────────────────────────────
 
-const searchProducts: ToolHandler = async (args, context) => {
-  const query = args.query as string | undefined;
+const searchProducts: ToolHandler = async (args) => {
+  const query = (args.query as string | undefined) ?? '';
   const limit = (args.limit as number | undefined) ?? 10;
   const offset = (args.offset as number | undefined) ?? 0;
-  const filters = args.filters as {
-    category?: string;
-    minPrice?: number;
-    maxPrice?: number;
-    inStock?: boolean;
-  } | undefined;
 
-  let results = [...MOCK_PRODUCTS];
+  try {
+    const client = getWixEcommerceClient();
+    const response = await client.searchProducts(query, { limit, offset });
 
-  // Apply text search
-  if (query) {
-    const queryLower = query.toLowerCase();
-    results = results.filter(
-      p =>
-        p.name.toLowerCase().includes(queryLower) ||
-        p.description.toLowerCase().includes(queryLower) ||
-        p.category.toLowerCase().includes(queryLower)
-    );
-  }
-
-  // Apply filters
-  if (filters) {
-    if (filters.category) {
-      results = results.filter(
-        p => p.category.toLowerCase() === filters.category?.toLowerCase()
-      );
-    }
-    if (filters.minPrice !== undefined) {
-      results = results.filter(p => p.price >= filters.minPrice!);
-    }
-    if (filters.maxPrice !== undefined) {
-      results = results.filter(p => p.price <= filters.maxPrice!);
-    }
-    if (filters.inStock !== undefined) {
-      results = results.filter(p => p.inStock === filters.inStock);
-    }
-  }
-
-  // Apply pagination
-  const total = results.length;
-  results = results.slice(offset, offset + limit);
-
-  return createTextResult({
-    products: results.map(p => ({
+    const products = response.products.map((p) => ({
       id: p.id,
       name: p.name,
-      description: p.description.substring(0, 200),
-      price: formatPrice(p.price, p.currency),
-      imageUrl: p.imageUrl,
-      inStock: p.inStock,
-      category: p.category,
-      variantCount: p.variants.length,
-    })),
-    total,
-    offset,
-    limit,
-    hasMore: offset + results.length < total,
-    message: total > 0
-      ? `Found ${total} product(s)${query ? ` matching "${query}"` : ''}`
-      : 'No products found matching your criteria',
-  });
+      description: p.description?.substring(0, 200),
+      price: formatPrice(p.priceData),
+      imageUrl: p.media.mainMedia?.url,
+      inStock: p.stock.inStock,
+      type: p.productType,
+      brand: p.brand,
+      sku: p.sku,
+      optionCount: p.productOptions.length,
+    }));
+
+    return createTextResult({
+      products,
+      total: response.metadata.total,
+      offset: response.metadata.offset,
+      limit,
+      hasMore: response.metadata.offset + products.length < response.metadata.total,
+      mode: client.isInMockMode() ? 'demo' : 'live',
+      message:
+        response.metadata.total > 0
+          ? `Found ${response.metadata.total} product(s)${query ? ` matching "${query}"` : ''}`
+          : 'No products found matching your criteria',
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return createErrorResult(`Failed to search products: ${message}`);
+  }
 };
 
-const getProduct: ToolHandler = async (args, context) => {
+const getProduct: ToolHandler = async (args) => {
   const productId = args.productId as string | undefined;
 
   if (!productId) {
     return createErrorResult('productId is required');
   }
 
-  const product = MOCK_PRODUCTS.find(p => p.id === productId);
+  try {
+    const client = getWixEcommerceClient();
+    const product = await client.getProduct(productId);
 
-  if (!product) {
-    return createErrorResult(`Product ${productId} not found`);
+    return createTextResult({
+      id: product.id,
+      name: product.name,
+      slug: product.slug,
+      description: product.description,
+      type: product.productType,
+      price: formatPrice(product.priceData),
+      priceRaw: formatPriceRaw(product.priceData),
+      inStock: product.stock.inStock,
+      stockQuantity: product.stock.quantity,
+      trackInventory: product.stock.trackInventory,
+      imageUrl: product.media.mainMedia?.url,
+      images: product.media.items.map((m) => m.url),
+      sku: product.sku,
+      brand: product.brand,
+      weight: product.weight,
+      options:
+        product.productOptions.length > 0
+          ? product.productOptions.map((o) => ({
+              name: o.name,
+              type: o.optionType,
+              choices: o.choices.map((c) => ({
+                value: c.value,
+                inStock: c.inStock,
+              })),
+            }))
+          : undefined,
+      mode: client.isInMockMode() ? 'demo' : 'live',
+      message: product.stock.inStock
+        ? 'Product is in stock and available for purchase'
+        : 'Product is currently out of stock',
+      actions: product.stock.inStock
+        ? ['Add to checkout with createCheckout']
+        : ['Product unavailable - try searching for alternatives'],
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    if (message.includes('NOT_FOUND') || message.includes('not found')) {
+      return createErrorResult(`Product ${productId} not found`);
+    }
+    return createErrorResult(`Failed to get product: ${message}`);
   }
-
-  return createTextResult({
-    id: product.id,
-    name: product.name,
-    description: product.description,
-    price: formatPrice(product.price, product.currency),
-    priceRaw: {
-      amount: product.price,
-      currency: product.currency,
-    },
-    category: product.category,
-    inStock: product.inStock,
-    stockQuantity: product.stockQuantity,
-    imageUrl: product.imageUrl,
-    variants: product.variants.length > 0
-      ? product.variants.map(v => ({
-          id: v.id,
-          name: v.name,
-        }))
-      : undefined,
-    message: product.inStock
-      ? 'Product is in stock and available for purchase'
-      : 'Product is currently out of stock',
-    actions: product.inStock
-      ? ['Add to checkout with createCheckout']
-      : ['Product unavailable - try searching for alternatives'],
-  });
 };
 
-const getBusinessProfile: ToolHandler = async (args, context) => {
-  // Return mock business profile
+const getBusinessProfile: ToolHandler = async () => {
+  const client = getWixEcommerceClient();
+  const isDemo = client.isInMockMode();
+
   return createTextResult({
     business: {
-      name: 'Demo Store',
-      description: 'A demonstration Wix store powered by UCP',
-      logo: 'https://example.com/logo.png',
+      name: isDemo ? 'Demo Store (DEMO MODE)' : 'Wix Store (Live)',
+      description: isDemo
+        ? 'A demonstration store running in DEMO mode with mock data'
+        : 'A live Wix store powered by UCP',
       currency: 'USD',
       locale: 'en-US',
     },
+    mode: isDemo ? 'demo' : 'live',
     capabilities: [
       {
         name: 'dev.ucp.shopping.checkout',
@@ -264,7 +199,9 @@ const getBusinessProfile: ToolHandler = async (args, context) => {
       returnWindow: 30,
       shipping: 'Standard and express options available',
     },
-    message: 'Welcome! This store supports full checkout, order management, and identity linking.',
+    message: isDemo
+      ? 'Running in DEMO mode - using mock data. Set DEMO_MODE=false with Wix credentials for live data.'
+      : 'Running in LIVE mode - connected to real Wix store',
     availableTools: [
       'searchProducts - Search for products',
       'getProduct - Get product details',

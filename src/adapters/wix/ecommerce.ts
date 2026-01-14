@@ -16,6 +16,9 @@ import type {
   WixShippingInfo,
   WixFulfillment,
   WixPaging,
+  WixProduct,
+  WixProductsQueryResponse,
+  WixMember,
 } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -510,6 +513,117 @@ export class WixEcommerceClient {
   }
 
   // ─────────────────────────────────────────────────────────────
+  // Catalog/Products API (Wix Stores)
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Search products
+   */
+  async searchProducts(query: string = '', options: {
+    limit?: number;
+    offset?: number;
+    collectionId?: string;
+  } = {}): Promise<WixProductsQueryResponse> {
+    if (this.mockMode) {
+      return this.mockSearchProducts(query, options);
+    }
+
+    const { limit = 50, offset = 0, collectionId } = options;
+
+    // Build filter
+    const filter: Record<string, unknown> = {};
+    if (query) {
+      filter.name = { $contains: query };
+    }
+    if (collectionId) {
+      filter['collections.id'] = collectionId;
+    }
+
+    return this.client!.post<WixProductsQueryResponse>(
+      '/stores/v1/products/query',
+      {
+        query: {
+          filter,
+          paging: { limit, offset },
+          sort: [{ fieldName: 'name', order: 'ASC' }],
+        },
+      }
+    );
+  }
+
+  /**
+   * Get product by ID
+   */
+  async getProduct(productId: string): Promise<WixProduct> {
+    if (this.mockMode) {
+      return this.mockGetProduct(productId);
+    }
+
+    return this.client!.get<{ product: WixProduct }>(
+      `/stores/v1/products/${productId}`
+    ).then((res) => res.product);
+  }
+
+  /**
+   * Get product by slug
+   */
+  async getProductBySlug(slug: string): Promise<WixProduct | null> {
+    if (this.mockMode) {
+      return this.mockGetProductBySlug(slug);
+    }
+
+    const response = await this.client!.post<WixProductsQueryResponse>(
+      '/stores/v1/products/query',
+      {
+        query: {
+          filter: { slug },
+          paging: { limit: 1 },
+        },
+      }
+    );
+
+    return response.products[0] || null;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Members API
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Get member by ID
+   */
+  async getMember(memberId: string): Promise<WixMember> {
+    if (this.mockMode) {
+      return this.mockGetMember(memberId);
+    }
+
+    return this.client!.get<{ member: WixMember }>(
+      `/members/v1/members/${memberId}`
+    ).then((res) => res.member);
+  }
+
+  /**
+   * Get current member (from auth context)
+   */
+  async getCurrentMember(): Promise<WixMember | null> {
+    if (this.mockMode) {
+      return this.mockGetMember('member_current');
+    }
+
+    try {
+      return await this.client!.get<{ member: WixMember }>(
+        '/members/v1/members/current'
+      ).then((res) => res.member);
+    } catch (error) {
+      // No logged-in member
+      if (error instanceof WixClientError && error.code === 'NOT_FOUND') {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
   // Mock Implementations
   // ─────────────────────────────────────────────────────────────
 
@@ -783,6 +897,252 @@ export class WixEcommerceClient {
       lineItems,
       trackingInfo,
       createdDate: new Date().toISOString(),
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Mock Products/Catalog
+  // ─────────────────────────────────────────────────────────────
+
+  private mockSearchProducts(
+    query: string,
+    options: { limit?: number; offset?: number } = {}
+  ): WixProductsQueryResponse {
+    const { limit = 50, offset = 0 } = options;
+    const now = new Date().toISOString();
+    
+    const allProducts: WixProduct[] = [
+      {
+        id: 'prod_demo_001',
+        name: 'Premium Wireless Headphones',
+        slug: 'premium-wireless-headphones',
+        visible: true,
+        productType: 'physical',
+        description: 'High-quality wireless headphones with noise cancellation',
+        sku: 'WH-001',
+        weight: 0.5,
+        stock: { inStock: true, quantity: 100, trackInventory: true },
+        priceData: {
+          currency: 'USD',
+          price: 149.99,
+          discountedPrice: 129.99,
+          formatted: { price: '$149.99', discountedPrice: '$129.99' },
+        },
+        media: {
+          mainMedia: {
+            id: 'img_1',
+            url: 'https://static.wixstatic.com/media/demo_headphones.jpg',
+            mediaType: 'IMAGE',
+          },
+          items: [],
+        },
+        productOptions: [
+          {
+            name: 'Color',
+            optionType: 'DROP_DOWN',
+            choices: [
+              { value: 'Black', inStock: true, visible: true },
+              { value: 'White', inStock: true, visible: true },
+              { value: 'Silver', inStock: false, visible: true },
+            ],
+          },
+        ],
+        variants: [],
+        brand: 'TechAudio',
+        createdDate: now,
+        lastUpdated: now,
+      },
+      {
+        id: 'prod_demo_002',
+        name: 'Organic Cotton T-Shirt',
+        slug: 'organic-cotton-tshirt',
+        visible: true,
+        productType: 'physical',
+        description: 'Comfortable 100% organic cotton t-shirt',
+        sku: 'TS-002',
+        weight: 0.2,
+        stock: { inStock: true, quantity: 250, trackInventory: true },
+        priceData: {
+          currency: 'USD',
+          price: 29.99,
+          formatted: { price: '$29.99' },
+        },
+        media: {
+          mainMedia: {
+            id: 'img_2',
+            url: 'https://static.wixstatic.com/media/demo_tshirt.jpg',
+            mediaType: 'IMAGE',
+          },
+          items: [],
+        },
+        productOptions: [
+          {
+            name: 'Size',
+            optionType: 'DROP_DOWN',
+            choices: [
+              { value: 'S', inStock: true, visible: true },
+              { value: 'M', inStock: true, visible: true },
+              { value: 'L', inStock: true, visible: true },
+              { value: 'XL', inStock: false, visible: true },
+            ],
+          },
+          {
+            name: 'Color',
+            optionType: 'DROP_DOWN',
+            choices: [
+              { value: 'Navy', inStock: true, visible: true },
+              { value: 'White', inStock: true, visible: true },
+              { value: 'Grey', inStock: true, visible: true },
+            ],
+          },
+        ],
+        variants: [],
+        brand: 'EcoWear',
+        createdDate: now,
+        lastUpdated: now,
+      },
+      {
+        id: 'prod_demo_003',
+        name: 'Digital Photography Course',
+        slug: 'digital-photography-course',
+        visible: true,
+        productType: 'digital',
+        description: 'Complete online course for photography beginners',
+        sku: 'DPC-003',
+        stock: { inStock: true, trackInventory: false },
+        priceData: {
+          currency: 'USD',
+          price: 79.99,
+          discountedPrice: 49.99,
+          formatted: { price: '$79.99', discountedPrice: '$49.99' },
+        },
+        media: {
+          mainMedia: {
+            id: 'img_3',
+            url: 'https://static.wixstatic.com/media/demo_course.jpg',
+            mediaType: 'IMAGE',
+          },
+          items: [],
+        },
+        productOptions: [],
+        variants: [],
+        createdDate: now,
+        lastUpdated: now,
+      },
+      {
+        id: 'prod_demo_004',
+        name: 'Stainless Steel Water Bottle',
+        slug: 'stainless-steel-water-bottle',
+        visible: true,
+        productType: 'physical',
+        description: 'Insulated water bottle keeps drinks cold for 24 hours',
+        sku: 'WB-004',
+        weight: 0.3,
+        stock: { inStock: true, quantity: 500, trackInventory: true },
+        priceData: {
+          currency: 'USD',
+          price: 24.99,
+          formatted: { price: '$24.99' },
+        },
+        media: {
+          mainMedia: {
+            id: 'img_4',
+            url: 'https://static.wixstatic.com/media/demo_bottle.jpg',
+            mediaType: 'IMAGE',
+          },
+          items: [],
+        },
+        productOptions: [
+          {
+            name: 'Size',
+            optionType: 'DROP_DOWN',
+            choices: [
+              { value: '500ml', inStock: true, visible: true },
+              { value: '750ml', inStock: true, visible: true },
+              { value: '1L', inStock: true, visible: true },
+            ],
+          },
+        ],
+        variants: [],
+        brand: 'HydroLife',
+        createdDate: now,
+        lastUpdated: now,
+      },
+    ];
+
+    // Filter by query if provided
+    let filtered = allProducts;
+    if (query) {
+      const q = query.toLowerCase();
+      filtered = allProducts.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.description?.toLowerCase().includes(q) ||
+          p.sku?.toLowerCase().includes(q)
+      );
+    }
+
+    // Apply pagination
+    const paginated = filtered.slice(offset, offset + limit);
+
+    return {
+      products: paginated,
+      metadata: {
+        count: paginated.length,
+        offset,
+        total: filtered.length,
+      },
+    };
+  }
+
+  private mockGetProduct(productId: string): WixProduct {
+    const result = this.mockSearchProducts('');
+    const product = result.products.find((p) => p.id === productId);
+    if (!product) {
+      throw new WixClientError('Product not found', 404, 'NOT_FOUND');
+    }
+    return product;
+  }
+
+  private mockGetProductBySlug(slug: string): WixProduct | null {
+    const result = this.mockSearchProducts('');
+    return result.products.find((p) => p.slug === slug) || null;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Mock Members
+  // ─────────────────────────────────────────────────────────────
+
+  private mockGetMember(memberId: string): WixMember {
+    const now = new Date().toISOString();
+    return {
+      id: memberId,
+      loginEmail: 'demo@example.com',
+      status: 'APPROVED',
+      contact: {
+        firstName: 'Demo',
+        lastName: 'User',
+        phones: ['+1-555-123-4567'],
+        emails: ['demo@example.com'],
+        addresses: [
+          {
+            id: 'addr_1',
+            addressLine1: '123 Demo Street',
+            city: 'San Francisco',
+            subdivision: 'CA',
+            country: 'US',
+            postalCode: '94102',
+          },
+        ],
+      },
+      profile: {
+        nickname: 'DemoUser',
+        slug: 'demo-user',
+      },
+      privacyStatus: 'PUBLIC',
+      activityStatus: 'ACTIVE',
+      createdDate: now,
+      updatedDate: now,
     };
   }
 }

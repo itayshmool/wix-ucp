@@ -147,6 +147,18 @@ export const UCP_MCP_TOOLS: MCPTool[] = [
   },
 
   {
+    name: 'getShippingOptions',
+    description: 'Get available shipping options for checkout',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        checkoutId: { type: 'string', description: 'Checkout ID' },
+      },
+      required: ['checkoutId'],
+    },
+  },
+
+  {
     name: 'completeCheckout',
     description: 'Complete checkout with payment token',
     inputSchema: {
