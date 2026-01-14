@@ -19,8 +19,21 @@ let state = {
   checkout: null,
   selectedShipping: null,
   order: null,
-  apiLogs: []
+  apiLogs: [],
+  mode: null // 'demo', 'live', or null (use server default)
 };
+
+// ============================================
+// URL Parameter Handling
+// ============================================
+function getModeFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get('mode');
+  if (mode === 'demo' || mode === 'live') {
+    return mode;
+  }
+  return null;
+}
 
 // ============================================
 // DOM Elements
@@ -78,10 +91,17 @@ async function callAPI(tool, args = {}) {
   const startTime = performance.now();
   
   try {
+    const requestBody = { tool, arguments: args };
+    
+    // Include mode if explicitly set (not null/server default)
+    if (state.mode) {
+      requestBody.mode = state.mode;
+    }
+    
     const response = await fetch(`${TEST_API}/call`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tool, arguments: args })
+      body: JSON.stringify(requestBody)
     });
     
     const data = await response.json();
@@ -557,11 +577,15 @@ function setupEventListeners() {
 // Initialize
 // ============================================
 function init() {
+  // Get mode from URL parameter
+  state.mode = getModeFromUrl();
+  
   setupEventListeners();
   goToStep(1);
   renderApiLog();
   
-  console.log('🛒 Wix UCP Flow Wizard initialized');
+  const modeDisplay = state.mode ? `${state.mode.toUpperCase()} mode` : 'server default';
+  console.log(`🛒 Wix UCP Flow Wizard initialized (${modeDisplay})`);
 }
 
 init();

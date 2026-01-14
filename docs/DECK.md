@@ -95,8 +95,8 @@ The Test UI supports **instant switching** between demo and live data:
 |----------|-----|-------------|
 | **Console - Live Data** | [/test-ui/console?mode=live](https://wix-ucp-api.onrender.com/test-ui/console?mode=live) | 🟢 Real Wix store products |
 | **Console - Demo Data** | [/test-ui/console?mode=demo](https://wix-ucp-api.onrender.com/test-ui/console?mode=demo) | 🟡 Mock products (no Wix needed) |
-| **Wizard - Live Flow** | [/test-ui/wizard](https://wix-ucp-api.onrender.com/test-ui/wizard) | Server default checkout flow |
-| **Wizard - Demo Flow** | [/test-ui/wizard](https://wix-ucp-api.onrender.com/test-ui/wizard) | Server default checkout flow |
+| **Wizard - Live Flow** | [/test-ui/wizard?mode=live](https://wix-ucp-api.onrender.com/test-ui/wizard?mode=live) | 🟢 Real Wix checkout flow |
+| **Wizard - Demo Flow** | [/test-ui/wizard?mode=demo](https://wix-ucp-api.onrender.com/test-ui/wizard?mode=demo) | 🟡 Mock checkout flow |
 
 ---
 
